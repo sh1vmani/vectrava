@@ -65,13 +65,18 @@ them, stop and raise it rather than working around it.
 Conventional Commits with a module scope are mandatory. Allowed scopes:
 
 `dow`, `ipi`, `rag`, `cli`, `config`, `core`, `output`, `docs`, `ci`, `test`,
-`build`, `release`, `repo`
+`build`, `release`, `repo`, `scorecard`, `codeql`, `dco`, `secrets`, `workflow`
 
 Example:
 
 ```
 feat(dow): add cost amplification meter
 ```
+
+Use a workflow-name scope (`scorecard`, `codeql`, `dco`, `secrets`) for a change
+to that single workflow. Use `workflow` for a change that spans several
+workflows at once, and `ci` for CI configuration that is not tied to one
+specific workflow.
 
 ## Where to find more
 
