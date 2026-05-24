@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
+from pydantic import JsonValue
+
 from vectrava.core.result import Finding, Severity
 
 
@@ -49,7 +51,12 @@ def test_finding_serializes_to_json() -> None:
 
 
 def test_evidence_accepts_json_compatible_values() -> None:
-    evidence = {"count": 1, "name": "x", "list": [1, 2, 3], "nested": {"ok": True}}
+    evidence: dict[str, JsonValue] = {
+        "count": 1,
+        "name": "x",
+        "list": [1, 2, 3],
+        "nested": {"ok": True},
+    }
     finding = Finding(
         rule_id="r",
         probe="dow.r",

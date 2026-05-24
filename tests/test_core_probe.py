@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
 from vectrava.core.probe import Probe
 from vectrava.core.result import Severity
+
+if TYPE_CHECKING:
+    from vectrava.core.probe import ProbeContext
+    from vectrava.core.result import Finding
 
 
 def test_probe_subclass_requires_name() -> None:
@@ -17,7 +23,7 @@ def test_probe_subclass_requires_name() -> None:
             baseline_severity = Severity.LOW
             estimated_tokens_per_run = 1
 
-            def run(self, ctx):
+            def run(self, ctx: ProbeContext) -> list[Finding]:
                 return []
 
 
@@ -30,7 +36,7 @@ def test_probe_subclass_requires_module() -> None:
             baseline_severity = Severity.LOW
             estimated_tokens_per_run = 1
 
-            def run(self, ctx):
+            def run(self, ctx: ProbeContext) -> list[Finding]:
                 return []
 
 
@@ -43,7 +49,7 @@ def test_probe_subclass_requires_description() -> None:
             baseline_severity = Severity.LOW
             estimated_tokens_per_run = 1
 
-            def run(self, ctx):
+            def run(self, ctx: ProbeContext) -> list[Finding]:
                 return []
 
 
@@ -56,7 +62,7 @@ def test_probe_subclass_requires_baseline_severity() -> None:
             description = "d"
             estimated_tokens_per_run = 1
 
-            def run(self, ctx):
+            def run(self, ctx: ProbeContext) -> list[Finding]:
                 return []
 
 
@@ -68,7 +74,7 @@ def test_probe_make_finding_prefills_metadata() -> None:
         baseline_severity = Severity.MEDIUM
         estimated_tokens_per_run = 10
 
-        def run(self, ctx):
+        def run(self, ctx: ProbeContext) -> list[Finding]:
             return []
 
     finding = MakeFindingProbe().make_finding(message="m", target="http://t")
@@ -79,4 +85,4 @@ def test_probe_make_finding_prefills_metadata() -> None:
 
 def test_probe_run_is_abstract() -> None:
     with pytest.raises(TypeError):
-        Probe()
+        Probe()  # type: ignore[abstract]
