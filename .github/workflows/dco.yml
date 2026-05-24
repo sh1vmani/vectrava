@@ -1,0 +1,50 @@
+name: DCO
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dco-check:
+    name: DCO sign-off
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify DCO sign-off on all commits
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          missing=0
+          commits=$(git rev-list "$BASE_SHA".."$HEAD_SHA")
+          if [ -z "$commits" ]; then
+            echo "No commits in range to check."
+            exit 0
+          fi
+          for sha in $commits; do
+            subject=$(git log -1 --format='%s' "$sha")
+            if git log -1 --format='%B' "$sha" | grep -qE '^Signed-off-by: .+ <.+@.+>$'; then
+              echo "ok:      $sha  $subject"
+            else
+              echo "MISSING: $sha  $subject"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo ""
+            echo "One or more commits are missing a DCO Signed-off-by trailer."
+            echo "Add it with: git commit --amend -s   (or: git rebase --signoff)"
+            echo "See CONTRIBUTING.md for details."
+            exit 1
+          fi
+          echo "All commits carry a DCO sign-off."

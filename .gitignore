@@ -1,0 +1,47 @@
+# Python build artifacts
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Test and tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# IDE and editor (also covered by the global ignore; explicit here)
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Project scan outputs (user-generated, never source-controlled)
+*.sarif
+
+# Project-local agent state (also covered by the global ignore; explicit here)
+.claude/
+
+# Local config overrides (for example settings.local.json)
+*.local
+*.local.*
+
+# uv.lock is intentionally NOT ignored. Commit it. The lockfile pins exact
+# dependency versions for reproducible installs. Do not add uv.lock here.

@@ -1,0 +1,44 @@
+# Project-level pre-commit hooks for contributors who use the pre-commit
+# framework. These layer on top of the global git hooks installed via
+# init.templateDir. Run locally with: pre-commit run --all-files
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.14
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.1.0
+    hooks:
+      - id: mypy
+        args: ['--strict']
+        additional_dependencies:
+          - pydantic
+          - typer
+          - httpx
+          - structlog
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: local
+    hooks:
+      - id: no-em-dash
+        name: no em dash or en dash
+        description: 'Reject em dashes and en dashes; use ASCII hyphen-minus instead'
+        entry: '[\u2014\u2013]'
+        language: pygrep
+        types: [text]
+        exclude: '^\.pre-commit-config\.yaml$'
