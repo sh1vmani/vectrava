@@ -12,6 +12,13 @@ permissions: read-all
 jobs:
   analysis:
     name: Scorecard analysis
+    # Publishing results and uploading SARIF to code scanning require GitHub
+    # Advanced Security on private repositories, which this project does not
+    # have. Gate on public visibility so the job skips cleanly while the repo is
+    # private and activates when it flips public at the Week 12 launch. Remove
+    # this gate at launch: scheduled events do not populate
+    # github.event.repository, so leaving it would skip the weekly run.
+    if: github.event.repository.visibility == 'public'
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -24,7 +31,7 @@ jobs:
           persist-credentials: false
 
       - name: Run Scorecard
-        uses: ossf/scorecard-action@v2
+        uses: ossf/scorecard-action@v2.4.3
         with:
           results_file: results.sarif
           results_format: sarif
