@@ -234,6 +234,105 @@ Open items carried forward, revised after Part 5:
   client, writer) is unit-tested in isolation today. This is the next item on
   the Day 3 evening plan.
 
+Step B added an end-to-end integration test, closing the integration gap, in
+one commit:
+
+- `8e0c886` test(test): add end-to-end integration tests for dow scan and SARIF
+  output.
+
+New artifact:
+
+- `tests/test_integration_dow_scan.py`: 152 lines, three tests. Drives the full
+  `scan dow` path through the real CLI entry point: argument parsing, the
+  authorization gate, probe registration and selection, the probe running
+  against a mocked httpx transport, the SARIF writer, and schema validation
+  inside `write_sarif`. No network and no real environment reads.
+
+Test cases:
+
+- `test_clean_scan_emits_zero_finding_sarif`: exit 0, empty results,
+  `invocations[0].executionSuccessful` true.
+- `test_findings_scan_emits_results_sarif`: exit 1, five findings, every
+  `ruleId` is `token_amplification`, correct SARIF structure.
+- `test_probe_failure_emits_invocation_unsuccessful_sarif`: exit 2,
+  `executionSuccessful` false.
+
+Each piece (probe, client, writer) was unit-tested in isolation before this
+commit; the integration test exercises the wiring between them through the real
+CLI entry.
+
+Design notes:
+
+- `httpx.Client` is monkeypatched to inject `MockTransport`, the established
+  precedent from `test_cli_scan_dow.py`.
+- The registry is cleared and re-registered per test, because the
+  `_load_module_probes` cached import is a no-op after the first call and does
+  not re-trigger `@register`.
+
+Step C added the second concrete dow probe, in one commit:
+
+- `dcf3134` feat(dow): add output padding probe.
+
+New artifacts:
+
+- `src/vectrava/dow/probes/output_padding.py`: 121 lines. Measures whether the
+  target inflates responses to short-answer prompts far beyond the natural
+  answer length. A response that burns many tokens for a one-word answer wastes
+  cost on every call, a Denial-of-Wallet vector distinct from the large-output
+  amplification measured by `token_amplification`.
+- `tests/test_dow_output_padding.py`: 193 lines, eight tests.
+
+Changes to existing code:
+
+- `src/vectrava/dow/probes/__init__.py`: added the `output_padding` side-effect
+  import so the `@register` decorator runs on package import.
+
+Probe design:
+
+- Four short-answer categories with per-category expected-content ceilings:
+  arithmetic (12), single_fact (16), yes_no (8), boolean_classification (8).
+- `PROMPTS` is a tuple of three-tuples `(category, prompt,
+  expected_max_content_tokens)`, a deliberate divergence from
+  `token_amplification`'s two-tuple because the per-category ceiling is the
+  signal.
+- `padding_ratio = completion_tokens / expected_max_content_tokens`. The probe
+  reads `ctx.options.get("padding_threshold", 4.0)` and does not consume the
+  amplification `threshold` key, since the two metrics are incompatible on a
+  single scale. A dedicated `--padding-threshold` CLI flag is deferred.
+- Reuses `call_completion` with no client changes. `PROBE_MAX_TOKENS` is 256,
+  smaller than `token_amplification`'s 512, since short answers need no
+  headroom. Baseline severity MEDIUM, tags `dow`, `cost`, `padding`.
+
+Decisions deferred:
+
+- Fingerprint: `prompt_category` is in evidence, so the existing `_fingerprint`
+  in `sarif.py` is correct and collision-free. The D19
+  `fingerprint_discriminator` ClassVar design (option b) was pre-specified for
+  the first probe lacking `prompt_category` but deferred on YAGNI grounds; the
+  ipi and rag probes are the real trigger.
+- ABC extension: deferred. No new ClassVars, no change to `core/probe.py`.
+
+Verification after Step C:
+
+- 68 tests passing (60 after the integration test, plus 8 new output_padding
+  tests).
+- Both probes listed by `vtra scan dow --list`: `output_padding` and
+  `token_amplification`, both medium severity.
+- mypy strict clean across 35 source files.
+- CI green on HEAD `dcf3134` (1m5s), No Secrets green (16s). CodeQL and
+  Scorecard skipped under the private-repo gate.
+
+Open items carried forward, revised after Step C:
+
+- The integration gap is now closed.
+- The dow module now has two concrete probes. A third probe (model substitution
+  detection) is the planned next step.
+- The `padding_threshold` CLI flag is still deferred.
+- `json_writer.py` and `html.py` still raise `NotImplementedError`, tenacity
+  retry and backoff is still deferred, scope-file signature verification is
+  still open, and the Week 12 gate-removal task on `codeql.yml` and
+  `scorecard.yml` remains open.
+
 ### Not done
 
 - Probe logic for all three modules.
