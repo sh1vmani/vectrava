@@ -17,7 +17,9 @@ Scaffold and repository foundation.
 - Tooling: uv, ruff (lint and format), mypy strict, pytest with hypothesis.
 - CI matrix across Python 3.11, 3.12, 3.13 on Linux, macOS, and Windows.
 - Supply-chain and quality workflows: CodeQL, OpenSSF Scorecard, DCO check,
-  secret scanning.
+  secret scanning. Scorecard is pinned to a specific release tag (v2.4.3).
+  CodeQL and Scorecard are gated to run only when the repository is public,
+  because both require GitHub Advanced Security to run on a private repo.
 - Standard repository files: README, LICENSE (Apache 2.0), CONTRIBUTING,
   CODE_OF_CONDUCT, SECURITY, MAINTAINERS.
 
@@ -38,3 +40,12 @@ Scaffold and repository foundation.
 
 The repository is private during the build and flips to public at the Week 12
 launch.
+
+### Launch tasks (Week 12)
+
+- Remove the `if: github.event.repository.visibility == 'public'` gate from
+  `.github/workflows/codeql.yml` and `.github/workflows/scorecard.yml`. The gate
+  exists only to skip these jobs while the repo is private, since both require
+  GitHub Advanced Security to run on a private repo. Once public the gate is
+  unnecessary, and leaving it would skip the weekly scheduled Scorecard run
+  because scheduled events do not populate `github.event.repository`.
