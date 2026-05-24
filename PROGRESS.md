@@ -31,6 +31,13 @@ Scaffold and repository foundation.
   `--dry-run`, and a cost confirmation prompt above 50,000 estimated tokens.
   Added the `vtra` entry point alongside `vectrava`. No dow probes yet.
 
+### Day 2 close (2026-05-24)
+
+Day 2 delivered the commit-scope governance fix and the dow module architecture
+(`core/result.py`, `core/probe.py`, `core/registry.py`, plus the new CLI
+surface). 29 tests passing. Next: Part 3, the token amplification probe, which
+is the first concrete dow probe.
+
 ### Not done
 
 - Probe logic for all three modules.
