@@ -22,6 +22,9 @@ Scaffold and repository foundation.
   because both require GitHub Advanced Security to run on a private repo.
 - Standard repository files: README, LICENSE (Apache 2.0), CONTRIBUTING,
   CODE_OF_CONDUCT, SECURITY, MAINTAINERS.
+- Expanded allowed Conventional Commits scopes to include workflow-name scopes.
+  Added scope enforcement to the commit-msg hook to prevent future drift. The
+  hook now rejects malformed format or unlisted scopes at commit time.
 
 ### Not done
 
