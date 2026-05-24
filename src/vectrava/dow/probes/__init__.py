@@ -1,6 +1,8 @@
 """dow probe implementations.
 
 Importing this package registers every dow probe through its `@register`
-decorator. No probes are implemented yet; they arrive in a later part. When they
-do, import each probe module here so registration runs on package import.
+decorator. Each probe module is imported here so registration runs on package
+import.
 """
+
+from vectrava.dow.probes import token_amplification as _token_amplification  # noqa: F401

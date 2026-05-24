@@ -111,6 +111,8 @@ def _run_scan(
     yes: bool,
     output: Path | None,
     output_format: str,
+    threshold: float,
+    model: str,
 ) -> None:
     """Drive a scan for one module: discover, authorize, estimate, run, emit."""
     _load_module_probes(module)
@@ -187,7 +189,7 @@ def _run_scan(
                 scope=scope_file,
                 http=http,
                 logger=logger.bind(probe=probe.name),
-                options={},
+                options={"threshold": threshold, "model": model},
             )
             try:
                 findings.extend(probe.run(ctx))
@@ -244,6 +246,21 @@ def scan_dow(
         str,
         typer.Option("--format", help="Output format: sarif, json, or html."),
     ] = "sarif",
+    threshold: Annotated[
+        float,
+        typer.Option(
+            "--threshold",
+            min=1.0,
+            help="Flag when output tokens reach this multiple of input tokens. Default 15.0.",
+        ),
+    ] = 15.0,
+    model: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            help="Model identifier sent in the chat-completions request body (e.g. gpt-4o-mini).",
+        ),
+    ] = "gpt-4o-mini",
 ) -> None:
     """Run Denial-of-Wallet (dow) probes against an authorized target."""
     _run_scan(
@@ -258,6 +275,8 @@ def scan_dow(
         yes=yes,
         output=output,
         output_format=output_format,
+        threshold=threshold,
+        model=model,
     )
 
 
