@@ -11,6 +11,8 @@ from __future__ import annotations
 import contextlib
 import importlib
 import json
+import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -23,6 +25,7 @@ from vectrava.core import registry
 from vectrava.core.auth_gate import AuthorizationError, AuthorizationGate
 from vectrava.core.probe import Probe, ProbeContext, ProbeError
 from vectrava.core.result import Finding
+from vectrava.output.sarif import write_sarif
 
 # Cost transparency. The rate is a placeholder default; reading it from config is
 # a future enhancement.
@@ -83,13 +86,33 @@ def _select_probes(probes: list[type[Probe]], only: str | None) -> list[type[Pro
     return matched
 
 
-def _emit_findings(findings: list[Finding], output: Path, output_format: str) -> None:
-    """Write findings to the output path.
+def _emit_findings(
+    findings: list[Finding],
+    output: Path,
+    output_format: str,
+    *,
+    started_at: datetime,
+    execution_successful: bool,
+    exit_code: int,
+    arguments: list[str],
+) -> None:
+    """Write findings to the output path in the requested format.
 
-    The SARIF, HTML, and JSON writers are not implemented yet, so for now the
-    findings are written as JSON regardless of the requested format and the data
-    is inspectable.
+    SARIF goes through the real writer. JSON and HTML fall back to the interim
+    JSON dump until their writers are implemented.
     """
+    if output_format == "sarif":
+        write_sarif(
+            findings,
+            output,
+            started_at=started_at,
+            execution_successful=execution_successful,
+            exit_code=exit_code,
+            arguments=arguments,
+        )
+        typer.echo(f"wrote {len(findings)} finding(s) to {output} (format 'sarif')")
+        return
+
     payload = [finding.model_dump(mode="json") for finding in findings]
     output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     typer.echo(
@@ -115,6 +138,7 @@ def _run_scan(
     model: str,
 ) -> None:
     """Drive a scan for one module: discover, authorize, estimate, run, emit."""
+    started_at = datetime.now(UTC)
     _load_module_probes(module)
     module_probes = registry.by_module(module)
 
@@ -197,11 +221,17 @@ def _run_scan(
                 scan_error = True
                 typer.secho(f"probe {probe.name!r} failed: {exc}", err=True, fg=typer.colors.YELLOW)
 
-    _emit_findings(findings, out_path, output_format)
-
-    if scan_error:
-        raise typer.Exit(code=2)
-    raise typer.Exit(code=1 if findings else 0)
+    exit_code = 2 if scan_error else (1 if findings else 0)
+    _emit_findings(
+        findings,
+        out_path,
+        output_format,
+        started_at=started_at,
+        execution_successful=not scan_error,
+        exit_code=exit_code,
+        arguments=sys.argv[1:],
+    )
+    raise typer.Exit(code=exit_code)
 
 
 @scan_app.command("dow")
