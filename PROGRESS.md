@@ -120,6 +120,120 @@ Open items carried forward:
 - The Week 12 gate-removal task on `codeql.yml` and `scorecard.yml` remains
   open.
 
+Part 5 added the SARIF v2.1.0 output writer, in two further commits in order:
+
+- `817f9e8` chore(build): vendor SARIF v2.1.0 schema and add jsonschema
+  dependencies.
+- `d5deb10` feat(output): implement SARIF v2.1.0 writer and wire into CLI.
+
+New artifacts:
+
+- `src/vectrava/output/schemas/sarif-2.1.0.json`: the OASIS SARIF v2.1.0
+  schema, vendored byte-for-byte from the oasis-tcs/sarif-spec `main` branch
+  (`sarif-2.1/schema/sarif-schema-2.1.0.json`). SHA-256
+  `c3b4bb2d6093897483348925aaa73af03b3e3f4bd4ca38cef26dcb4212a2682e`.
+- `src/vectrava/output/schemas/__init__.py`: package marker so
+  `importlib.resources` can locate the vendored schema.
+- `src/vectrava/output/sarif.py`: a full rewrite of the `NotImplementedError`
+  stub. `build_sarif_log` is a pure assembler that returns the SARIF dict;
+  `write_sarif` validates against the vendored schema and writes to disk. Free
+  functions, no class.
+- `tests/test_output_sarif.py`: 12 tests, all offline, no network and no
+  environment reads.
+
+Changes to existing code:
+
+- `pyproject.toml`: `jsonschema>=4` as a runtime dependency and
+  `types-jsonschema>=4` as a dev dependency.
+- `uv.lock`: regenerated with jsonschema 4.26.0 plus its transitives (`attrs`,
+  `jsonschema-specifications`, `referencing`, `rpds-py`) and
+  types-jsonschema 4.26.0.20260518 in the dev group.
+- `src/vectrava/cli.py`: `_emit_findings` dispatches to `write_sarif` when the
+  format is `sarif`; the `json` and `html` paths are preserved as the interim
+  JSON dump. `_run_scan` records `started_at` and computes `exit_code` before
+  calling `_emit_findings`, then passes the invocation context (`started_at`,
+  `execution_successful`, `exit_code`, `arguments=sys.argv[1:]`) to the writer.
+
+SARIF feature coverage (Standard, not Maximal):
+
+- `runs[0].tool.driver` with `name`, `version`, `informationUri`, and `rules`.
+- `runs[0].results[]` with `ruleId`, `ruleIndex`, `level`, `message`,
+  `locations[].physicalLocation.artifactLocation`,
+  `partialFingerprints["vectrava/v1"]`, and a properties bag carrying the
+  original `Finding.evidence` plus a `severity` key holding the five-level
+  Severity name for consumers that want it.
+- `runs[0].invocations[]` with `executionSuccessful`, `exitCode`,
+  `startTimeUtc`, `endTimeUtc`, and `arguments` when provided.
+- `runs[0].artifacts[]` deduplicated by URI and sorted by URI for
+  deterministic output.
+- Excluded: taxonomies, code flows, graphs, conversions, fixes, suppressions.
+
+Design decisions, recorded so the reasoning survives:
+
+- Severity to SARIF level follows the existing docstring table in
+  `src/vectrava/core/result.py`: INFORMATIONAL and LOW map to `note`, MEDIUM
+  to `warning`, HIGH and CRITICAL to `error`. I initially locked a different
+  mapping (LOW to `warning`) and reversed it after the implementation pass
+  surfaced the conflict against `result.py`'s existing convention.
+- The `security-severity` numeric values also come from that table: 0.0, 2.0,
+  5.0, 7.5, 9.0.
+- Partial fingerprint inputs are `sha256(rule_id|target|category)` truncated
+  to 16 hex chars, keyed under `partialFingerprints["vectrava/v1"]`. Volatile
+  signals (the ratio, latency) are excluded so fingerprints stay stable across
+  scans.
+- The `arguments` parameter on `build_sarif_log` defaults to None and is
+  omitted from the SARIF document when None. The CLI passes `sys.argv[1:]`
+  explicitly; the writer never auto-collects argv, so test calls do not
+  silently capture pytest's argv.
+- The emitted `$schema` field uses the GitHub raw URL (matching modern
+  emitters such as checkov), not the schema's internal `docs.oasis-open.org`
+  id, since that host has had reachability issues historically.
+- Schema validation defaults to on in production `write_sarif` calls and fails
+  closed: a non-conformant log raises `SarifValidationError` and no file is
+  written. A `validate=False` escape hatch exists only for local builder
+  debugging.
+- Argument scrubbing in `invocations[].arguments` is the CLI's responsibility,
+  not the writer's. The writer emits whatever list it is passed; the
+  `--api-key-env` value redaction lives in the CLI.
+
+Tests added (12, all offline):
+
+- `test_zero_findings_produces_valid_log`
+- `test_single_finding_includes_rule_and_artifact`
+- `test_severity_to_level_mapping` (covers all five severities)
+- `test_partial_fingerprints_are_stable`
+- `test_arguments_omitted_when_none`
+- `test_arguments_emitted_when_provided`
+- `test_dedup_artifacts`
+- `test_unregistered_rule_id_synthesizes_fallback_rule`
+- `test_write_sarif_writes_file_and_validates`
+- `test_write_sarif_validation_failure_raises_and_does_not_write`
+- `test_security_severity_numeric_emitted_on_rule_properties`
+- `test_evidence_preserved_in_result_properties`
+
+Verification gates, scope expanded this session:
+
+- 57 tests passing on HEAD `d5deb10`, up from 45 earlier this session and 29
+  at Day 3 start.
+- mypy strict still clean across 32 source files.
+- CI green on HEAD (58s) and No Secrets green (9s). CodeQL and Scorecard
+  correctly skipped under the private-repo gate.
+
+Open items carried forward, revised after Part 5:
+
+- Output writers: SARIF is now implemented. `json_writer.py` and `html.py`
+  still raise `NotImplementedError`, and the CLI falls back to the interim
+  JSON dump for both. These remain open.
+- tenacity retry and backoff for transient HTTP failures: still deferred.
+- Scope-file signature verification: still open, listed under Not done, and
+  will need its own focused session.
+- The Week 12 gate-removal task on `codeql.yml` and `scorecard.yml`: still
+  open.
+- No end-to-end smoke test yet that drives `_run_scan` against a mock target
+  and validates the SARIF output through the real flow. Each piece (probe,
+  client, writer) is unit-tested in isolation today. This is the next item on
+  the Day 3 evening plan.
+
 ### Not done
 
 - Probe logic for all three modules.
