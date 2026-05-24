@@ -25,6 +25,11 @@ Scaffold and repository foundation.
 - Expanded allowed Conventional Commits scopes to include workflow-name scopes.
   Added scope enforcement to the commit-msg hook to prevent future drift. The
   hook now rejects malformed format or unlisted scopes at commit time.
+- Probe architecture: a `Probe` ABC, a `Finding` model with a five-level
+  `Severity` scheme, and a probe registry, all in `core/` so the ipi and rag
+  modules reuse them. New CLI surface `vtra scan dow` with `--list`, `--only`,
+  `--dry-run`, and a cost confirmation prompt above 50,000 estimated tokens.
+  Added the `vtra` entry point alongside `vectrava`. No dow probes yet.
 
 ### Not done
 

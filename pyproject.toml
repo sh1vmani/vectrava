@@ -31,6 +31,7 @@ Issues = "https://github.com/sh1vmani/vectrava/issues"
 
 [project.scripts]
 vectrava = "vectrava.cli:app"
+vtra = "vectrava.cli:app"
 
 [dependency-groups]
 dev = [
