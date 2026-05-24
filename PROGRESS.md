@@ -333,6 +333,75 @@ Open items carried forward, revised after Step C:
   still open, and the Week 12 gate-removal task on `codeql.yml` and
   `scorecard.yml` remains open.
 
+Step D added the third concrete dow probe, in one commit:
+
+- `2859e4a` feat(dow): add model substitution probe.
+
+New artifacts:
+
+- `src/vectrava/dow/probes/model_substitution.py`: 112 lines. Measures whether
+  the target serves the model the operator requested. Single-shot: one request
+  with a 16-token output cap, comparing `CompletionResult.model` to the model
+  in `ctx.options["model"]`.
+- `tests/test_dow_model_substitution.py`: 188 lines, nine tests.
+
+Changes to existing code:
+
+- `src/vectrava/dow/probes/__init__.py`: added the `model_substitution`
+  import in alphabetical order.
+
+Probe design:
+
+- Single-shot, no `PROMPTS` loop. One request, at most one finding per scan.
+  `PROBE_MAX_TOKENS` is 16, since only the response envelope is needed, not the
+  output content.
+- Consumes only `ctx.options["model"]`. Reads no threshold key of any kind, and
+  adds no CLI flag.
+- Three outcomes: an exact match emits no finding; a non-null mismatch emits a
+  MEDIUM finding with `match_status` `mismatch`; a null reported model emits an
+  INFORMATIONAL finding with `match_status` `unreported`.
+- Per-finding level override: the unreported case calls
+  `make_finding(level=Severity.INFORMATIONAL)`, so the mismatch and unreported
+  findings carry different SARIF levels while the rule's
+  `defaultConfiguration.level` uses the MEDIUM baseline.
+- String comparison only. The probe cannot resolve a deployment alias to a
+  canonical model name and cannot rank model cost direction, so a mismatch is
+  flagged for human triage rather than judged an upgrade or a downgrade. The
+  raw `requested_model` and `reported_model` strings are in evidence for triage.
+
+Decisions deferred:
+
+- Exit code: an INFORMATIONAL finding (unreported model) still drives the scan
+  to exit 1 under the existing exit-code logic. Accepted for Day 3; targets like
+  Azure deployments that do not echo the model name will exit 1 even though no
+  cost manipulation is confirmed. A severity-threshold exit-code option is
+  deferred.
+- Fingerprint: the probe emits at most one finding per target, so the
+  empty-string discriminator fallback is safe per D9's own safety condition. No
+  `fingerprint_discriminator` ClassVar, and the D9/D19 deferral still holds.
+- ABC extension: deferred. No new ClassVars, no change to `core/probe.py`.
+
+Verification after Step D:
+
+- 77 tests passing.
+- All three dow probes listed by `vtra scan dow --list`: `model_substitution`,
+  `output_padding`, and `token_amplification`, all medium severity.
+- mypy strict clean across 37 source files.
+- CI green on HEAD `2859e4a` (1m1s), No Secrets green (10s). CodeQL and
+  Scorecard skipped under the private-repo gate.
+
+Open items carried forward, revised after Step D:
+
+- The dow module now has three concrete probes covering three distinct
+  Denial-of-Wallet vectors. A fourth probe is under consideration but not yet
+  planned; Step E will assess remaining time and whether to go deeper on dow or
+  pivot to scope-file signature verification, the first ipi probe, or the JSON
+  and HTML output writers.
+- All other open items from the Step C carry-forward remain open: the
+  `padding_threshold` CLI flag, the `json_writer.py` and `html.py` stubs,
+  tenacity retry and backoff, scope-file signature verification, and the Week 12
+  gate-removal task on `codeql.yml` and `scorecard.yml`.
+
 ### Not done
 
 - Probe logic for all three modules.
