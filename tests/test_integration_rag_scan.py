@@ -20,6 +20,7 @@ from typer.testing import CliRunner
 from vectrava.cli import app
 from vectrava.core import registry
 from vectrava.core.registry import register
+from vectrava.rag.probes.citation_hijack import CitationHijackProbe
 from vectrava.rag.probes.cross_document_injection import CrossDocumentInjectionProbe
 
 if TYPE_CHECKING:
@@ -35,6 +36,7 @@ _HEX16 = re.compile(r"[0-9a-f]{16}")
 def _registry() -> Iterator[None]:
     registry.clear()
     register(CrossDocumentInjectionProbe)
+    register(CitationHijackProbe)
     yield
     registry.clear()
 
@@ -48,7 +50,9 @@ def _patch_client(monkeypatch: pytest.MonkeyPatch, handler: Handler) -> None:
     monkeypatch.setattr(httpx, "Client", factory)
 
 
-def _invoke(scope: Path, out: Path, fmt: str = "sarif") -> Any:
+def _invoke(
+    scope: Path, out: Path, fmt: str = "sarif", only: str = "cross_document_injection"
+) -> Any:
     return runner.invoke(
         app,
         [
@@ -60,6 +64,8 @@ def _invoke(scope: Path, out: Path, fmt: str = "sarif") -> Any:
             "https://example.test",
             "--api-key-env",
             "VECTRAVA_TEST_KEY",
+            "--only",
+            only,
             "--format",
             fmt,
             "--output",
@@ -138,6 +144,84 @@ def test_probe_failure_emits_unsuccessful(
     _patch_client(monkeypatch, handler)
     out = tmp_path / "out.sarif"
     result = _invoke(valid_scope_file, out)
+
+    assert result.exit_code == 2
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert run["results"] == []
+    assert run["invocations"][0]["executionSuccessful"] is False
+    assert run["invocations"][0]["exitCode"] == 2
+
+
+def test_citation_hijack_clean_scan_emits_zero_findings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"message": {"content": "Full time staff get 15 vacation days."}}],
+            },
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="citation_hijack")
+
+    assert result.exit_code == 0
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert run["results"] == []
+    assert run["invocations"][0]["executionSuccessful"] is True
+    assert run["invocations"][0]["exitCode"] == 0
+
+
+def test_citation_hijack_injection_succeeds_emits_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        content = body["messages"][1]["content"]
+        match = _HEX16.search(content)
+        token = match.group(0) if match else ""
+        reply = f"According to source 1, the value is {token}."
+        return httpx.Response(
+            200,
+            json={"model": "gpt-4o-mini", "choices": [{"message": {"content": reply}}]},
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="citation_hijack")
+
+    assert result.exit_code == 1
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert len(run["results"]) >= 1
+    rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
+    assert "citation_hijack" in rule_ids
+    assert all(r["ruleId"] == "citation_hijack" for r in run["results"])
+
+
+def test_citation_hijack_probe_failure_emits_unsuccessful(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, text="bad request")
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="citation_hijack")
 
     assert result.exit_code == 2
     assert out.exists()
