@@ -493,10 +493,187 @@ Open items carried forward, revised after Step E:
   (a fourth probe, or the `padding_threshold` flag), start the JSON or HTML
   writers, begin the ipi module, or close out the tenacity work.
 
+Step F shipped three runtime and output improvements plus one CI fix,
+in four commits:
+
+- `43e5e40` feat(core): add tenacity retry and backoff for httpx calls.
+- `ff332ba` feat(output): implement JSON writer.
+- `8bf623a` feat(cli): add padding_threshold flag for output_padding
+  probe.
+- `0833173` fix(test): make padding_threshold rejection assertion
+  CI-portable.
+
+New artifacts:
+
+- `src/vectrava/core/http.py` exposes a single sync primitive,
+  `post_with_retry`, that wraps an `httpx.Client.post` in a
+  `tenacity.Retrying` policy. It retries `httpx.TransportError`,
+  `httpx.TimeoutException`, and the retryable status set
+  {429, 500, 502, 503, 504}; other 4xx and 501 pass through
+  unchanged. Retry-After is honored when present, parsed as numeric
+  seconds first and HTTP-date second (via
+  `email.utils.parsedate_to_datetime`), capped at `wait_max_s`, with
+  `tenacity.wait_exponential_jitter` as the fallback when the header
+  is absent or unparseable. Retries exhausted on a status return the
+  last response; retries exhausted on an exception re-raise. The
+  caller decides translation.
+- `tests/test_core_http.py` covers retry-then-success on each
+  retryable status, Retry-After honoring on 429, no-retry on
+  non-retryable statuses (400, 404, 501), transport and timeout
+  retry-then-success, and the three exhaustion paths.
+- `src/vectrava/output/json_writer.py` is rewritten from a
+  `NotImplementedError` stub into a real writer with the same shape
+  as the SARIF writer: `build_json_report` is a pure assembler
+  returning a dict envelope, `write_json` builds and writes. The
+  envelope has six top-level keys: `schema_version` (string `"1"`),
+  `started_at`, `execution_successful`, `exit_code`, `arguments`,
+  and `findings`. Findings are emitted as
+  `Finding.model_dump(mode='json')`. The Pydantic model is the
+  contract; no external schema validation, because there is no
+  external spec (unlike SARIF).
+- `tests/test_output_json_writer.py` covers the envelope shape, the
+  finding round-trip via `Finding.model_validate`, the empty-findings
+  case, the `schema_version` string type, trailing newline and utf-8
+  encoding, and key-order preservation.
+- A `_CapturingProbe` test class in `tests/test_cli_scan_dow.py`
+  records `ctx.options` so the new CLI flag tests can assert the
+  flag value reaches the probe.
+
+Changes to existing code:
+
+- `src/vectrava/dow/client.py` keeps `call_completion`'s public
+  signature and `ProbeError` translation but now delegates the HTTP
+  call to `post_with_retry` through three module-level tunables
+  (`_RETRY_MAX_ATTEMPTS`, `_RETRY_WAIT_INITIAL_S`,
+  `_RETRY_WAIT_MAX_S`) that tests monkeypatch to zero for speed.
+  The 429 `ProbeError` message drops "no backoff is implemented"
+  (false now) and reads "target rate-limited the probe (429) and
+  retries were exhausted"; the details dict still carries `status`
+  and `retry_after`.
+- `tests/test_dow_client.py` gains a `_fast_retry` fixture and
+  call-count assertions: retryable-path tests expect three handler
+  invocations, non-retryable-path tests expect one.
+- The three probe-level error-propagation tests in
+  `tests/test_dow_token_amplification.py`,
+  `tests/test_dow_output_padding.py`, and
+  `tests/test_dow_model_substitution.py` flipped their fail-fast
+  trigger from HTTP 500 to HTTP 400. The original 500 became
+  retryable once tenacity landed, which would have caused those
+  probe-layer tests to wait three retries plus assert three handler
+  calls instead of one. 400 preserves the test intent (a ProbeError
+  on the first prompt halts the probe before later prompts) without
+  coupling probe-layer tests to client-layer retry semantics. The
+  probe source files were not touched.
+- `src/vectrava/cli.py` gains a top-level `write_json` import; the
+  `_emit_findings` JSON branch now calls `write_json` with the same
+  run-level metadata SARIF receives, replacing the interim inline
+  `json.dumps` placeholder. The HTML branch is unchanged. A new
+  `--padding-threshold` option is added to `scan_dow` with default
+  4.0 and `min=1.0`, threaded through `_run_scan` into
+  `ProbeContext.options` as the `padding_threshold` key.
+  `src/vectrava/dow/probes/output_padding.py` already read that key
+  with an in-probe default, so the probe source was not touched.
+- `tests/test_integration_dow_scan.py` gains an `fmt` parameter on
+  `_invoke` and three end-to-end JSON cases mirroring the SARIF
+  clean/findings/failure shape. The pre-existing SARIF probe-failure
+  test flipped its handler from HTTP 500 to HTTP 400 to avoid the
+  ~3s of real retry backoff the live tenacity policy introduced;
+  test intent (probe-failure-as-exit-2,
+  `executionSuccessful=False`) is unchanged.
+
+Design decisions:
+
+- One retry primitive, one consumer. `post_with_retry` is a generic
+  sync HTTP helper that knows nothing about completions, chat, or
+  dow. `call_completion` is the first consumer and the only one
+  today; ipi and rag will use it when they land. A per-module retry
+  pattern was considered and rejected: same code three times invites
+  three subtly different bugs.
+- `tenacity.Retrying` with `retry_any` of `retry_if_exception_type`
+  and `retry_if_result`, plus a `retry_error_callback` that inspects
+  `retry_state.outcome.failed` to choose raise-vs-return. A manual
+  retry loop was considered and rejected: tenacity's policy
+  composition (stop, wait, retry predicates, callbacks) is exactly
+  the shape this needs, and writing it by hand would reimplement
+  tenacity less well.
+- JSON envelope as a dict, not a bare findings array. Mirrors SARIF's
+  run-level metadata (started_at, execution_successful, exit_code,
+  arguments) so a consumer can compare formats apples-to-apples and
+  so a JSON-only consumer still gets the same context. The
+  `schema_version` key is a string (`"1"`) so a later revision can
+  be `"1.1"` or `"2"` without a type change.
+- Test-status flips over retry-aware probe tests. Both flips
+  (probe-level error tests, SARIF probe-failure integration test)
+  preserve the test's actual intent (a ProbeError on the first
+  prompt halts the probe; the CLI surfaces probe failure as exit
+  code 2 with `executionSuccessful=False`) and decouple the test
+  from a behavior it was never meant to assert (retry semantics,
+  which have their own dedicated tests in `test_core_http.py` and
+  `test_dow_client.py`).
+- `--padding-threshold` lives on `scan dow`, not on the `scan`
+  group. The flag is probe-specific. When ipi or rag land their own
+  threshold knobs, those get their own probe-specific flags. A
+  unified namespaced-options system was considered and rejected as
+  premature; the second probe-specific flag is the right time to
+  reconsider.
+
+Verification after Step F:
+
+- 111 tests passing. +12 from `test_core_http.py`, +6 from
+  `test_output_json_writer.py`, +3 JSON integration cases, +3 CLI
+  padding-threshold cases, modifications elsewhere.
+- Full suite back to 0.71s after the SARIF probe-failure test flip
+  reclaimed the ~3s of real retry backoff that landed with tenacity.
+- mypy strict clean across 42 source files. tenacity is typed (no
+  `import-untyped`).
+- CI green on HEAD `0833173` across all nine matrix jobs (Python
+  3.11/3.12/3.13 on ubuntu/macos/windows). No Secrets green; CodeQL
+  and Scorecard skipped under the private-repo gate.
+- One CI failure occurred at HEAD `8bf623a`: the new
+  `test_padding_threshold_below_one_rejected` asserted a substring
+  of typer's Rich-formatted error panel, which is rendered at the
+  detected terminal width. Locally the wider terminal kept the
+  flag name in the error text; under CI's narrow non-tty runners
+  the panel truncated the line, removing the flag name and
+  breaking the substring assertion. All nine matrix jobs failed
+  identically; the rejection itself (exit code 2) worked
+  everywhere. The fix (`0833173`) replaced the substring check
+  with a structural one (exit code 2 plus `result.exception` is
+  None or a `SystemExit`), which is what the test was actually
+  trying to verify.
+
+Open items carried forward, revised after Step F:
+
+- tenacity retry and backoff is done. The dow client retries
+  transient failures (429, 5xx, transport, timeout) with capped
+  exponential jitter, honors Retry-After, and translates final
+  exhaustion into the same `ProbeError` shape `call_completion`
+  always produced.
+- The JSON writer is done. `vtra scan dow --format json` emits a
+  dict envelope with run-level metadata plus the Pydantic Finding
+  list. The HTML writer is still a `NotImplementedError` stub and
+  is the only output format still pending.
+- The `padding_threshold` CLI flag is done. `--padding-threshold`
+  threads through `_run_scan` into `ProbeContext.options` with
+  default 4.0 and `min=1.0`.
+- Surviving open items: the `html.py` writer stub, and the
+  Week 12 gate-removal task on `codeql.yml` and `scorecard.yml`
+  (deferred until repo visibility flips public).
+- One small inconsistency on the open list: `write_json` emits a
+  trailing newline, `write_sarif` does not. A small `fix(output)`
+  follow-up can align SARIF if it matters.
+- Day 3 ends here. Day 4 picks from: the HTML writer (closes the
+  third output format), the first ipi probe (opens the second
+  scanner module), or further dow work (a fourth probe, threshold
+  tuning). The HTML writer is the natural next step if Day 4
+  starts with "finish what we have"; the first ipi probe is the
+  natural next step if Day 4 starts with "open the next surface".
+
 ### Not done
 
 - Probe logic for all three modules.
-- Output serialization (the writers raise `NotImplementedError`).
+- HTML output writer (`html.py` raises `NotImplementedError`;
+  SARIF and JSON writers are implemented).
 
 ## Review checkpoints
 
