@@ -170,9 +170,9 @@ def test_probe_error_propagates() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.append(json.loads(request.content)["messages"][0]["content"])
-        return httpx.Response(500, text="server error")
+        return httpx.Response(400, text="server error")
 
-    with _client(handler) as client, pytest.raises(ProbeError, match="HTTP 500"):
+    with _client(handler) as client, pytest.raises(ProbeError, match="HTTP 400"):
         OutputPaddingProbe().run(_ctx(client))
 
     assert seen == [PROMPTS[0][1]]

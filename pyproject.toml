@@ -24,6 +24,7 @@ dependencies = [
     "structlog>=24",
     "jsonschema>=4",
     "cryptography>=43",
+    "tenacity>=8",
 ]
 
 [project.urls]

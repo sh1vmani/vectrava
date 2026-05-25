@@ -3,8 +3,10 @@
 A single synchronous helper, `call_completion`, sends one prompt to an
 OpenAI-compatible chat-completions endpoint and returns normalized token
 accounting. It reads no environment: the caller supplies the already-resolved
-BYOK credential. Every failure path raises `ProbeError` so the runner can
-isolate the probe and continue. No retries are attempted.
+BYOK credential. Transient failures (429, 5xx, transport errors, timeouts) are
+retried with backoff via `post_with_retry`; once retries are exhausted every
+failure path raises `ProbeError` so the runner can isolate the probe and
+continue.
 """
 
 from __future__ import annotations
@@ -14,9 +16,13 @@ import time
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from vectrava.core.http import post_with_retry
 from vectrava.core.probe import ProbeError
 
 _BODY_PREVIEW_CHARS = 500
+_RETRY_MAX_ATTEMPTS = 3
+_RETRY_WAIT_INITIAL_S = 1.0
+_RETRY_WAIT_MAX_S = 30.0
 
 
 class TokenUsage(BaseModel):
@@ -50,9 +56,10 @@ def call_completion(
     """Send one benign prompt to an OpenAI-compatible chat endpoint.
 
     Reads no environment; `credential` is the resolved BYOK value, never an
-    env-var name. Returns normalized token accounting on a 2xx response with
-    parseable usage. Raises `ProbeError` on transport failure, timeout, non-2xx
-    status, or missing usage. No retry is attempted.
+    env-var name. Transient failures are retried with backoff before translation.
+    Returns normalized token accounting on a 2xx response with parseable usage.
+    Raises `ProbeError` on transport failure, timeout, non-2xx status, or missing
+    usage once retries are exhausted.
 
     Args:
         http: Synchronous client supplied by the runner.
@@ -70,7 +77,7 @@ def call_completion(
     Raises:
         ProbeError: on any transport, timeout, status, or schema failure.
     """
-    request_body = {
+    request_body: dict[str, object] = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
@@ -79,7 +86,16 @@ def call_completion(
 
     start = time.perf_counter()
     try:
-        response = http.post(url, json=request_body, headers=headers, timeout=timeout_s)
+        response = post_with_retry(
+            http,
+            url,
+            json=request_body,
+            headers=headers,
+            timeout=timeout_s,
+            max_attempts=_RETRY_MAX_ATTEMPTS,
+            wait_initial_s=_RETRY_WAIT_INITIAL_S,
+            wait_max_s=_RETRY_WAIT_MAX_S,
+        )
     except httpx.TimeoutException as exc:
         raise ProbeError(
             f"target did not respond within {timeout_s}s",
@@ -95,7 +111,7 @@ def call_completion(
     status = response.status_code
     if status == 429:
         raise ProbeError(
-            "target rate-limited the probe (429); no backoff is implemented",
+            "target rate-limited the probe (429) and retries were exhausted",
             details={"status": 429, "retry_after": response.headers.get("Retry-After")},
         )
     if status in (401, 403):

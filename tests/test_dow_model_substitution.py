@@ -182,7 +182,7 @@ def test_endpoint_override() -> None:
 
 def test_probe_error_propagates() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, text="server error")
+        return httpx.Response(400, text="server error")
 
-    with _client(handler) as client, pytest.raises(ProbeError, match="HTTP 500"):
+    with _client(handler) as client, pytest.raises(ProbeError, match="HTTP 400"):
         ModelSubstitutionProbe().run(_ctx(client))
