@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import contextlib
 import importlib
-import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,6 +31,7 @@ from vectrava.core.signing import (
 from vectrava.core.signing import (
     sign_scope as sign_scope_file,
 )
+from vectrava.output.html import write_html
 from vectrava.output.json_writer import write_json
 from vectrava.output.sarif import write_sarif
 
@@ -111,8 +111,8 @@ def _emit_findings(
 ) -> None:
     """Write findings to the output path in the requested format.
 
-    SARIF and JSON go through their real writers. HTML falls back to the interim
-    JSON dump until its writer is implemented.
+    SARIF, JSON, and HTML each go through their own writer, all fed the same
+    run-level metadata.
     """
     if output_format == "sarif":
         write_sarif(
@@ -138,12 +138,15 @@ def _emit_findings(
         typer.echo(f"wrote {len(findings)} finding(s) to {output} (format 'json')")
         return
 
-    payload = [finding.model_dump(mode="json") for finding in findings]
-    output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    typer.echo(
-        f"wrote {len(findings)} finding(s) to {output} "
-        f"(format {output_format!r} pending writer implementation)"
+    write_html(
+        findings,
+        output,
+        started_at=started_at,
+        execution_successful=execution_successful,
+        exit_code=exit_code,
+        arguments=arguments,
     )
+    typer.echo(f"wrote {len(findings)} finding(s) to {output} (format 'html')")
 
 
 def _run_scan(

@@ -226,3 +226,78 @@ def test_probe_failure_emits_unsuccessful_json(
     assert report["findings"] == []
     assert report["execution_successful"] is False
     assert report["exit_code"] == 2
+
+
+def test_clean_scan_emits_zero_finding_html(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+            },
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.html"
+    result = _invoke(valid_scope_file, out, "html")
+
+    assert result.exit_code == 0
+    assert out.exists()
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith("<!DOCTYPE html>")
+    assert "Scan completed successfully" in text
+    assert "No findings reported." in text
+
+
+def test_findings_scan_emits_results_html(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"finish_reason": "length"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 500, "total_tokens": 510},
+            },
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.html"
+    result = _invoke(valid_scope_file, out, "html")
+
+    assert result.exit_code == 1
+    assert out.exists()
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith("<!DOCTYPE html>")
+    assert "Scan completed successfully" in text
+    assert '<table class="findings"' in text
+    assert "token_amplification" in text
+
+
+def test_probe_failure_emits_unsuccessful_html(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, text="bad request")
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.html"
+    result = _invoke(valid_scope_file, out, "html")
+
+    assert result.exit_code == 2
+    assert out.exists()
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith("<!DOCTYPE html>")
+    assert "Scan failed" in text
+    assert '<table class="findings"' not in text
