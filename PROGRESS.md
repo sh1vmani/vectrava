@@ -669,6 +669,82 @@ Open items carried forward, revised after Step F:
   starts with "finish what we have"; the first ipi probe is the
   natural next step if Day 4 starts with "open the next surface".
 
+### Day 4 close (2026-05-25)
+
+Closed the output triad and opened the second scanner module. Three commits,
+all CI-green, mypy strict clean across 47 source files, 136 tests passing (was
+111 at end of Day 3, +25).
+
+Commits, in order:
+
+- `d791997` feat(output): implement HTML report writer and wire into CLI.
+- `8a0edc8` fix(output): align SARIF writer trailing newline with JSON writer.
+- `2efff8a` feat(ipi): activate ipi module and add direct override injection
+  probe.
+
+What shipped:
+
+HTML writer (`src/vectrava/output/html.py`). Third and final output format.
+stdlib only, no new dependencies. Every probe-controlled or target-controlled
+interpolation passes through an `html.escape` wrapper before reaching the
+output, making the report safe to open in any browser without CSP concerns.
+Inline CSS, no JavaScript, no external assets or remote fonts. Renders a
+metadata block (target, started_at, finished_at, duration), an invocation
+outcome banner (green/red), and a severity-coded findings table. Severity to
+CSS class mapping reuses `sarif.map_level` so both writers stay aligned without
+duplicating the mapping. Probe-failure scans render the failure banner with no
+findings table, mirroring SARIF's invocation_successful and exit_code
+semantics.
+
+SARIF trailing-newline alignment. Closed the Day 3 carry-forward: `write_sarif`
+now appends a single trailing newline, matching `write_json`. Both writers now
+produce POSIX-clean files. One-line writer change, one targeted regression test
+(asserts single trailing newline, no double newline, no UTF-8 BOM, utf-8
+round-trip parses).
+
+ipi module activation. Second scanner module live, opens the indirect prompt
+injection attack surface. `DirectOverrideProbe` tests resistance to direct
+instruction-override injection smuggled into untrusted document content. Three
+injection phrasings (direct, authority_claim, role_hijack), each embedding a
+fresh `secrets.token_hex(8)` canary. Detection is exact-substring match on
+response text. HIGH severity (one notch above dow's MEDIUM baseline; CRITICAL
+reserved for future probes demonstrating exfiltration or tool-call hijacking).
+Probe calls `core.http.post_with_retry` directly rather than introducing an
+ipi-local client wrapper (Rule of Three: shared HTTP abstractions wait until
+rag arrives and three users justify the shape).
+
+CLI gains `vtra scan ipi` mirroring `scan dow` minus the dow-specific
+`--threshold` and `--padding-threshold` flags. `_run_scan` is module-agnostic
+by construction (`importlib.import_module(f"vectrava.{module}.probes")` plus
+`registry.by_module`) so no `_run_scan` changes were needed.
+
+Carry-forward to Day 5+:
+
+- `_run_scan`'s `options` dict is hardcoded to `{"threshold", "model",
+  "padding_threshold"}`, the dow-shaped key set. `scan_ipi` passes dow defaults
+  through and the ipi probe ignores those keys. Friction will grow when rag
+  arrives; right fix is a module-generic options grammar once a third module
+  gives evidence for the shape.
+- `src/vectrava/rag/__init__.py` likely carries a stale scaffold-era docstring
+  (mirrors what we found and aligned in `src/vectrava/ipi/__init__.py` this
+  day). Trivial to fix when Day 5/6 opens rag.
+- Writer interface does not thread `target` through. HTML writer derives target
+  from `findings[0].target` when findings exist and renders `n/a` on clean
+  scans. A clean (no-finding) HTML report should still name what was scanned.
+  Cross-writer interface change, deferred.
+- Week 12 gate-removal task on `codeql.yml` and `scorecard.yml` (carried from
+  Day 3, still deferred until repo visibility flips public).
+
+State at end of Day 4:
+
+- HEAD: 2efff8a on main
+- Total commits: 22 (was 19 at end of Day 3, +3)
+- Tests: 136 passing (was 124 at midday, was 111 at end of Day 3)
+- mypy strict: clean across 47 source files (was 42)
+- All workflows green-or-correctly-skipped on every Day 4 commit (CI ~1m14s to
+  1m47s, No Secrets ~10s, CodeQL + Scorecard skipped under the private-repo
+  gate)
+
 ### Not done
 
 - Probe logic for all three modules.
