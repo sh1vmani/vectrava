@@ -3,27 +3,47 @@
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+from pydantic import JsonValue
 from typer.testing import CliRunner
 
 from vectrava.cli import app
 from vectrava.core import registry
-from vectrava.core.probe import Probe
-from vectrava.core.result import Severity
+from vectrava.core.probe import Probe, ProbeContext
+from vectrava.core.result import Finding, Severity
 
 runner = CliRunner()
+
+_captured_options: list[Mapping[str, JsonValue]] = []
+
+
+class _CapturingProbe(Probe):
+    """Records the options it receives, so CLI option plumbing can be asserted."""
+
+    name = "capture_probe"
+    module = "dow"
+    description = "captures ctx.options for assertions"
+    baseline_severity = Severity.LOW
+    estimated_tokens_per_run = 1
+    requires_credentials = False
+
+    def run(self, ctx: ProbeContext) -> list[Finding]:
+        _captured_options.append(dict(ctx.options))
+        return []
 
 
 @pytest.fixture(autouse=True)
 def _clean_registry() -> Iterator[None]:
     registry.clear()
+    _captured_options.clear()
     yield
     registry.clear()
+    _captured_options.clear()
 
 
 def _combined(result: Any) -> str:
@@ -109,3 +129,62 @@ def test_dry_run_prints_estimate(tmp_path: Path, signed_scope_factory: Callable[
     text = _combined(result)
     assert "2000" in text
     assert "0.02" in text
+
+
+def test_padding_threshold_default_reaches_probe(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    assert len(_captured_options) == 1
+    assert _captured_options[0]["padding_threshold"] == 4.0
+
+
+def test_padding_threshold_custom_reaches_probe(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--padding-threshold",
+            "2.5",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    assert _captured_options[0]["padding_threshold"] == 2.5
+
+
+def test_padding_threshold_below_one_rejected() -> None:
+    result = runner.invoke(app, ["scan", "dow", "--padding-threshold", "0.5"])
+    assert result.exit_code == 2
+    assert "padding-threshold" in _combined(result).lower()

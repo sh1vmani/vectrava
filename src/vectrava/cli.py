@@ -160,6 +160,7 @@ def _run_scan(
     output: Path | None,
     output_format: str,
     threshold: float,
+    padding_threshold: float,
     model: str,
 ) -> None:
     """Drive a scan for one module: discover, authorize, estimate, run, emit."""
@@ -238,7 +239,11 @@ def _run_scan(
                 scope=scope_file,
                 http=http,
                 logger=logger.bind(probe=probe.name),
-                options={"threshold": threshold, "model": model},
+                options={
+                    "threshold": threshold,
+                    "model": model,
+                    "padding_threshold": padding_threshold,
+                },
             )
             try:
                 findings.extend(probe.run(ctx))
@@ -309,6 +314,17 @@ def scan_dow(
             help="Flag when output tokens reach this multiple of input tokens. Default 15.0.",
         ),
     ] = 15.0,
+    padding_threshold: Annotated[
+        float,
+        typer.Option(
+            "--padding-threshold",
+            min=1.0,
+            help=(
+                "Flag output_padding findings when the completion-to-ceiling "
+                "ratio reaches this value. Default 4.0."
+            ),
+        ),
+    ] = 4.0,
     model: Annotated[
         str,
         typer.Option(
@@ -331,6 +347,7 @@ def scan_dow(
         output=output,
         output_format=output_format,
         threshold=threshold,
+        padding_threshold=padding_threshold,
         model=model,
     )
 
