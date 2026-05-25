@@ -25,6 +25,13 @@ from vectrava.core import registry
 from vectrava.core.auth_gate import AuthorizationError, AuthorizationGate
 from vectrava.core.probe import Probe, ProbeContext, ProbeError
 from vectrava.core.result import Finding
+from vectrava.core.signing import (
+    generate_keypair,
+    verify_scope,
+)
+from vectrava.core.signing import (
+    sign_scope as sign_scope_file,
+)
 from vectrava.output.sarif import write_sarif
 
 # Cost transparency. The rate is a placeholder default; reading it from config is
@@ -45,6 +52,11 @@ scan_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(scan_app, name="scan")
+scope_app = typer.Typer(
+    help="Manage scope-file signing keys and signatures.",
+    no_args_is_help=True,
+)
+app.add_typer(scope_app, name="scope")
 
 
 def _estimated_cost_usd(tokens: int) -> float:
@@ -308,6 +320,78 @@ def scan_dow(
         threshold=threshold,
         model=model,
     )
+
+
+@scope_app.command("new-key")
+def scope_new_key(
+    out_dir: Annotated[
+        Path,
+        typer.Option("--out-dir", help="Directory to write the keypair into."),
+    ] = Path("."),
+) -> None:
+    """Generate an Ed25519 keypair for signing scope files."""
+    priv_b64, pub_b64 = generate_keypair()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    priv_path = out_dir / "vectrava_ed25519"
+    pub_path = out_dir / "vectrava_ed25519.pub"
+    priv_path.write_text(priv_b64, encoding="utf-8")
+    # Windows does not support chmod; best effort.
+    with contextlib.suppress(NotImplementedError):
+        priv_path.chmod(0o600)
+    pub_path.write_text(pub_b64, encoding="utf-8")
+    typer.echo(f"private key: {priv_path}")
+    typer.echo(f"public key:  {pub_path}")
+    typer.echo(f"set VECTRAVA_TRUSTED_KEYS={pub_b64} to authorize scans signed with this key")
+
+
+@scope_app.command("sign")
+def scope_sign(
+    scope_path: Annotated[Path, typer.Argument(help="Scope file to sign.")],
+    key_path: Annotated[
+        Path,
+        typer.Option("--key", help="Path to the Ed25519 private key file."),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Write signed scope here (default: overwrite input)."),
+    ] = None,
+) -> None:
+    """Sign a scope file with an Ed25519 private key."""
+    import json as _json
+
+    from vectrava.config.scope import ScopeFile as _ScopeFile
+
+    priv_b64 = key_path.read_text(encoding="utf-8").strip()
+    raw = _json.loads(scope_path.read_text(encoding="utf-8"))
+    scope = _ScopeFile.model_validate(raw)
+    signed = sign_scope_file(scope, priv_b64)
+    data = signed.model_dump(mode="json")
+    out = output or scope_path
+    out.write_text(_json.dumps(data, indent=2), encoding="utf-8")
+    typer.echo(f"signed scope written to {out}")
+
+
+@scope_app.command("verify")
+def scope_verify(
+    scope_path: Annotated[Path, typer.Argument(help="Scope file to verify.")],
+) -> None:
+    """Verify the signature on a signed scope file."""
+    import json as _json
+
+    from cryptography.exceptions import InvalidSignature
+
+    from vectrava.config.scope import ScopeFile as _ScopeFile
+
+    raw = _json.loads(scope_path.read_text(encoding="utf-8"))
+    scope = _ScopeFile.model_validate(raw)
+    try:
+        verify_scope(scope)
+        typer.echo("signature valid")
+        typer.echo(f"public key:  {scope.public_key}")
+        typer.echo(f"signed by:   {scope.signed_by}")
+    except (ValueError, InvalidSignature) as exc:
+        typer.secho(f"verification failed: {exc}", err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
 
 
 if __name__ == "__main__":

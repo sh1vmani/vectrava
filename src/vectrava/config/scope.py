@@ -25,3 +25,7 @@ class ScopeFile(BaseModel):
     targets: list[str] = Field(min_length=1)
     authorized_until: datetime
     signed_by: str = Field(min_length=1)
+    # base64url-encoded Ed25519 signature over the canonical payload
+    signature: str | None = None
+    # base64url-encoded raw Ed25519 public key
+    public_key: str | None = None
