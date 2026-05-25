@@ -13,7 +13,7 @@ import importlib
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import httpx
 import structlog
@@ -34,6 +34,11 @@ from vectrava.core.signing import (
 from vectrava.output.html import write_html
 from vectrava.output.json_writer import write_json
 from vectrava.output.sarif import write_sarif
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+
+    from pydantic import JsonValue
 
 # Cost transparency. The rate is a placeholder default; reading it from config is
 # a future enhancement.
@@ -162,9 +167,7 @@ def _run_scan(
     yes: bool,
     output: Path | None,
     output_format: str,
-    threshold: float,
-    padding_threshold: float,
-    model: str,
+    options: Mapping[str, JsonValue],
 ) -> None:
     """Drive a scan for one module: discover, authorize, estimate, run, emit."""
     started_at = datetime.now(UTC)
@@ -242,11 +245,7 @@ def _run_scan(
                 scope=scope_file,
                 http=http,
                 logger=logger.bind(probe=probe.name),
-                options={
-                    "threshold": threshold,
-                    "model": model,
-                    "padding_threshold": padding_threshold,
-                },
+                options=options,
             )
             try:
                 findings.extend(probe.run(ctx))
@@ -337,6 +336,11 @@ def scan_dow(
     ] = "gpt-4o-mini",
 ) -> None:
     """Run Denial-of-Wallet (dow) probes against an authorized target."""
+    options: dict[str, JsonValue] = {
+        "threshold": threshold,
+        "padding_threshold": padding_threshold,
+        "model": model,
+    }
     _run_scan(
         "dow",
         scope=scope,
@@ -349,9 +353,7 @@ def scan_dow(
         yes=yes,
         output=output,
         output_format=output_format,
-        threshold=threshold,
-        padding_threshold=padding_threshold,
-        model=model,
+        options=options,
     )
 
 
@@ -406,6 +408,7 @@ def scan_ipi(
     ] = "gpt-4o-mini",
 ) -> None:
     """Run Indirect Prompt Injection probes against TARGET."""
+    options: dict[str, JsonValue] = {"model": model}
     _run_scan(
         "ipi",
         scope=scope,
@@ -418,9 +421,7 @@ def scan_ipi(
         yes=yes,
         output=output,
         output_format=output_format,
-        threshold=15.0,
-        padding_threshold=4.0,
-        model=model,
+        options=options,
     )
 
 
@@ -475,6 +476,7 @@ def scan_rag(
     ] = "gpt-4o-mini",
 ) -> None:
     """Run RAG pipeline boundary probes against TARGET."""
+    options: dict[str, JsonValue] = {"model": model}
     _run_scan(
         "rag",
         scope=scope,
@@ -487,9 +489,7 @@ def scan_rag(
         yes=yes,
         output=output,
         output_format=output_format,
-        threshold=15.0,
-        padding_threshold=4.0,
-        model=model,
+        options=options,
     )
 
 
