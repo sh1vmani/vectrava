@@ -45,7 +45,7 @@ def _patch_client(monkeypatch: pytest.MonkeyPatch, handler: Handler) -> None:
     monkeypatch.setattr(httpx, "Client", factory)
 
 
-def _invoke(scope: Path, out: Path) -> Any:
+def _invoke(scope: Path, out: Path, fmt: str = "sarif") -> Any:
     return runner.invoke(
         app,
         [
@@ -58,7 +58,7 @@ def _invoke(scope: Path, out: Path) -> Any:
             "--api-key-env",
             "VECTRAVA_TEST_KEY",
             "--format",
-            "sarif",
+            fmt,
             "--output",
             str(out),
         ],
@@ -137,7 +137,7 @@ def test_probe_failure_emits_invocation_unsuccessful_sarif(
     monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
 
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, text="server error")
+        return httpx.Response(400, text="bad request")
 
     _patch_client(monkeypatch, handler)
     out = tmp_path / "out.sarif"
@@ -150,3 +150,79 @@ def test_probe_failure_emits_invocation_unsuccessful_sarif(
     assert run["results"] == []
     assert run["invocations"][0]["executionSuccessful"] is False
     assert run["invocations"][0]["exitCode"] == 2
+
+
+def test_clean_scan_emits_zero_finding_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
+            },
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.json"
+    result = _invoke(valid_scope_file, out, "json")
+
+    assert result.exit_code == 0
+    assert out.exists()
+    report: Any = json.loads(out.read_text(encoding="utf-8"))
+    assert report["findings"] == []
+    assert report["execution_successful"] is True
+    assert report["exit_code"] == 0
+
+
+def test_findings_scan_emits_results_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"finish_reason": "length"}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 500, "total_tokens": 510},
+            },
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.json"
+    result = _invoke(valid_scope_file, out, "json")
+
+    assert result.exit_code == 1
+    report: Any = json.loads(out.read_text(encoding="utf-8"))
+    findings = report["findings"]
+    assert len(findings) == 5
+    assert all(f["rule_id"] == "token_amplification" for f in findings)
+    assert all(f["probe"] == "dow.token_amplification" for f in findings)
+    assert all(f["level"] == "medium" for f in findings)
+    assert report["execution_successful"] is True
+    assert report["exit_code"] == 1
+
+
+def test_probe_failure_emits_unsuccessful_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, text="bad request")
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.json"
+    result = _invoke(valid_scope_file, out, "json")
+
+    assert result.exit_code == 2
+    report: Any = json.loads(out.read_text(encoding="utf-8"))
+    assert report["findings"] == []
+    assert report["execution_successful"] is False
+    assert report["exit_code"] == 2

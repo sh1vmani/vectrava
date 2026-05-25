@@ -32,6 +32,7 @@ from vectrava.core.signing import (
 from vectrava.core.signing import (
     sign_scope as sign_scope_file,
 )
+from vectrava.output.json_writer import write_json
 from vectrava.output.sarif import write_sarif
 
 # Cost transparency. The rate is a placeholder default; reading it from config is
@@ -110,8 +111,8 @@ def _emit_findings(
 ) -> None:
     """Write findings to the output path in the requested format.
 
-    SARIF goes through the real writer. JSON and HTML fall back to the interim
-    JSON dump until their writers are implemented.
+    SARIF and JSON go through their real writers. HTML falls back to the interim
+    JSON dump until its writer is implemented.
     """
     if output_format == "sarif":
         write_sarif(
@@ -123,6 +124,18 @@ def _emit_findings(
             arguments=arguments,
         )
         typer.echo(f"wrote {len(findings)} finding(s) to {output} (format 'sarif')")
+        return
+
+    if output_format == "json":
+        write_json(
+            findings,
+            output,
+            started_at=started_at,
+            execution_successful=execution_successful,
+            exit_code=exit_code,
+            arguments=arguments,
+        )
+        typer.echo(f"wrote {len(findings)} finding(s) to {output} (format 'json')")
         return
 
     payload = [finding.model_dump(mode="json") for finding in findings]
