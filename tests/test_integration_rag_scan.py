@@ -154,6 +154,48 @@ def test_probe_failure_emits_unsuccessful(
     assert run["invocations"][0]["exitCode"] == 2
 
 
+def test_num_sources_flag_plumbs_through_to_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        captured["user_content"] = body["messages"][1]["content"]
+        return httpx.Response(
+            200,
+            json={"model": "gpt-4o-mini", "choices": [{"message": {"content": "ok"}}]},
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "rag",
+            "--scope",
+            str(valid_scope_file),
+            "--target",
+            "https://example.test",
+            "--api-key-env",
+            "VECTRAVA_TEST_KEY",
+            "--only",
+            "cross_document_injection",
+            "--num-sources",
+            "5",
+            "--format",
+            "sarif",
+            "--output",
+            str(out),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert captured["user_content"].count('<source id="') == 5
+
+
 def test_citation_hijack_clean_scan_emits_zero_findings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
 ) -> None:

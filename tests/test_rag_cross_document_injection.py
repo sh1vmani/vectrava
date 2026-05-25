@@ -202,3 +202,23 @@ def test_required_classvars_set() -> None:
     assert isinstance(CrossDocumentInjectionProbe.baseline_severity, Severity)
     assert CrossDocumentInjectionProbe.estimated_tokens_per_run == 3 * 600
     assert isinstance(CrossDocumentInjectionProbe.estimated_tokens_per_run, int)
+
+
+def test_num_sources_pads_with_filler_when_greater_than_three() -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        user_content = body["messages"][1]["content"]
+        captured["user_content"] = user_content
+        match = _HEX16.search(user_content)
+        token = match.group(0) if match else ""
+        return _echo_response(token)
+
+    with _client(handler) as client:
+        ctx = _ctx(client, options={"model": "gpt-4o-mini", "num_sources": 5})
+        CrossDocumentInjectionProbe().run(ctx)
+
+    content = captured["user_content"]
+    assert content.count('<source id="') == 5
+    assert "Office hours are 9 AM to 5 PM" in content

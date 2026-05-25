@@ -474,9 +474,22 @@ def scan_rag(
             help="Model identifier sent in the chat-completions request body (e.g. gpt-4o-mini).",
         ),
     ] = "gpt-4o-mini",
+    num_sources: Annotated[
+        int,
+        typer.Option(
+            "--num-sources",
+            min=2,
+            help=(
+                "Number of retrieved source chunks per injection. Default 3 sends "
+                "the canonical injection structure; values above 3 pad with benign "
+                "filler chunks interleaved between the attack-pattern chunks to "
+                "stress-test robustness to retrieval distractors."
+            ),
+        ),
+    ] = 3,
 ) -> None:
     """Run RAG pipeline boundary probes against TARGET."""
-    options: dict[str, JsonValue] = {"model": model}
+    options: dict[str, JsonValue] = {"model": model, "num_sources": num_sources}
     _run_scan(
         "rag",
         scope=scope,
