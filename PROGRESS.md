@@ -402,11 +402,101 @@ Open items carried forward, revised after Step D:
   tenacity retry and backoff, scope-file signature verification, and the Week 12
   gate-removal task on `codeql.yml` and `scorecard.yml`.
 
+Step E hardened the authorization gate to require signed scope files, in two
+commits:
+
+- `5b0315b` feat(cli): add scope signing infrastructure and vtra scope commands.
+- `a737b5f` feat(core): require signed scope files for authorization.
+
+New artifacts:
+
+- `src/vectrava/core/signing.py` provides the Ed25519 signing path:
+  `b64url_encode` and `b64url_decode` for the wire format, `canonical_payload`
+  (Pydantic `model_dump` with the two signature fields stripped, then
+  `json.dumps` with `sort_keys=True` and compact separators) so the bytes
+  signed are stable across reformatting, `generate_keypair`, `sign_scope`,
+  `verify_scope`, and `trusted_public_keys` which reads `VECTRAVA_TRUSTED_KEYS`
+  (comma separated base64url public keys) and fails closed on an empty
+  environment.
+- `vtra scope` subcommand group: `new-key` prints a fresh Ed25519 keypair,
+  `sign` writes `signature` and `public_key` into a scope JSON in place,
+  `verify` checks a scope file against the current `VECTRAVA_TRUSTED_KEYS`.
+- `tests/test_core_signing.py` covers the 8 round-trip and tamper cases for the
+  signing primitives.
+- `tests/conftest.signed_scope_factory` generates a fresh ephemeral Ed25519
+  keypair per call, signs the scope, embeds `signature` and `public_key`,
+  writes the JSON, and registers the public key in `VECTRAVA_TRUSTED_KEYS` via
+  `monkeypatch.setenv` so tests do not bleed keys.
+
+Changes to existing code:
+
+- `ScopeFile` gains optional `signature: str | None` and
+  `public_key: str | None` fields, both defaulting to `None`. The defaults
+  preserve the direct `ScopeFile(...)` construction sites in the three
+  `test_dow_*.py` files, which build models in process and never invoke the
+  gate.
+- `AuthorizationGate.check()` now requires both fields to be present, requires
+  the embedded public key to appear in `VECTRAVA_TRUSTED_KEYS`, verifies the
+  Ed25519 signature, and only then evaluates the expiry window. Unsigned
+  scopes, untrusted keys, and invalid signatures each raise `AuthorizationError`
+  with a distinct message.
+- `tests/conftest.valid_scope_file` delegates to `signed_scope_factory`, so
+  `tests/test_integration_dow_scan.py` and any other consumer get a signed
+  scope without further changes.
+- `tests/test_auth_gate.py` migrated the expired-scope test to a
+  signed-but-expired scope (matched on `expired`) and added
+  `test_gate_rejects_unsigned_scope` and `test_gate_rejects_untrusted_key`.
+- `tests/test_cli_scan_dow.py` dropped its local `_write_scope` helper in favor
+  of `signed_scope_factory`, and pruned the now-unused `json` and `datetime`
+  imports.
+
+Design decisions:
+
+- Full non-repudiation, not integrity-only. The gate refuses to run unless the
+  embedded public key is listed in `VECTRAVA_TRUSTED_KEYS` at scan time, so a
+  passing scan is provably authorized by an operator whose key the running
+  environment already trusted. An integrity-only path (verify against the
+  embedded key with no trust root) was considered and rejected: it would only
+  catch tampering, not unauthorized signers.
+- Ed25519, not RSA or ECDSA. Keys and signatures are short, the primitive is
+  misuse-resistant, and `cryptography` ships it directly.
+- Canonical payload via `model_dump(mode='json')` with the two signature fields
+  removed, then `json.dumps(..., sort_keys=True, separators=(',', ':'))`. The
+  same byte sequence is signed by `sign_scope` and verified by `verify_scope`,
+  so a scope JSON that gets reformatted in transit (whitespace, key order) still
+  verifies.
+- Phase split. Phase 1 landed the signing primitives, the CLI commands, and the
+  optional `ScopeFile` fields without touching the gate, so the suite stayed
+  green at `5b0315b`. Phase 2 flipped the gate and migrated every gate-facing
+  fixture in a single atomic commit at `a737b5f`, so the suite was green on both
+  sides of the cutover.
+
+Verification after Step E:
+
+- 87 tests passing. The 8 `test_core_signing.py` tests landed with Phase 1 and
+  were part of the 85 baseline; Phase 2 added two `test_auth_gate.py` rejection
+  tests, taking the count to 87. The expired-scope test was migrated, not added.
+- mypy strict clean across 39 source files.
+- CI green on HEAD `a737b5f` (59s), No Secrets green (9s). CodeQL and Scorecard
+  skipped under the private-repo gate.
+
+Open items carried forward, revised after Step E:
+
+- Scope-file signature verification is done. The gate refuses unsigned scopes,
+  untrusted keys, and invalid signatures, and the `vtra scope` commands give
+  operators a way to mint keys and sign scope files.
+- All other open items from the Step D carry-forward remain open: the
+  `padding_threshold` CLI flag, the `json_writer.py` and `html.py` stubs,
+  tenacity retry and backoff, and the Week 12 gate-removal task on `codeql.yml`
+  and `scorecard.yml`.
+- Day 3 has run long. The next session decides whether to push further on dow
+  (a fourth probe, or the `padding_threshold` flag), start the JSON or HTML
+  writers, begin the ipi module, or close out the tenacity work.
+
 ### Not done
 
 - Probe logic for all three modules.
 - Output serialization (the writers raise `NotImplementedError`).
-- Scope-file signature verification.
 
 ## Review checkpoints
 
