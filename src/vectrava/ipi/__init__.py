@@ -1,1 +1,1 @@
-"""Indirect prompt injection payload generators."""
+"""Indirect Prompt Injection probes."""
