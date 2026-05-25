@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import contextlib
-import json
-from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -33,20 +31,6 @@ def _combined(result: Any) -> str:
     with contextlib.suppress(ValueError, AttributeError):
         text += result.stderr or ""
     return text
-
-
-def _write_scope(path: Path, targets: list[str]) -> Path:
-    path.write_text(
-        json.dumps(
-            {
-                "targets": targets,
-                "authorized_until": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
-                "signed_by": "Shivamani Vastrala",
-            }
-        ),
-        encoding="utf-8",
-    )
-    return path
 
 
 def _make_dow_probe(name: str, tokens: int) -> type[Probe]:
@@ -82,8 +66,10 @@ def test_scan_with_invalid_scope_exits_2(tmp_path: Path) -> None:
     assert result.exit_code == 2
 
 
-def test_scan_with_target_not_in_scope_exits_2(tmp_path: Path) -> None:
-    scope = _write_scope(tmp_path / "scope.json", ["http://allowed"])
+def test_scan_with_target_not_in_scope_exits_2(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
     result = runner.invoke(
         app,
         ["scan", "dow", "--scope", str(scope), "--target", "http://not-allowed"],
@@ -92,9 +78,13 @@ def test_scan_with_target_not_in_scope_exits_2(tmp_path: Path) -> None:
     assert "authorized" in _combined(result).lower()
 
 
-def test_dry_run_does_not_make_api_calls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dry_run_does_not_make_api_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    signed_scope_factory: Callable[..., Path],
+) -> None:
     registry.register(_make_dow_probe("amp", tokens=100))
-    scope = _write_scope(tmp_path / "scope.json", ["http://allowed"])
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
 
     def boom(*args: object, **kwargs: object) -> object:
         raise AssertionError("httpx.Client must not be constructed during a dry run")
@@ -108,9 +98,9 @@ def test_dry_run_does_not_make_api_calls(tmp_path: Path, monkeypatch: pytest.Mon
     assert "dry run" in _combined(result).lower()
 
 
-def test_dry_run_prints_estimate(tmp_path: Path) -> None:
+def test_dry_run_prints_estimate(tmp_path: Path, signed_scope_factory: Callable[..., Path]) -> None:
     registry.register(_make_dow_probe("amp", tokens=2000))
-    scope = _write_scope(tmp_path / "scope.json", ["http://allowed"])
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
     result = runner.invoke(
         app,
         ["scan", "dow", "--scope", str(scope), "--target", "http://allowed", "--dry-run"],

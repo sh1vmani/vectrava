@@ -1,8 +1,8 @@
 """Authorization gate enforced before any scan.
 
 The gate is the single chokepoint every scan passes through. It refuses to let a
-run start unless a scope file exists, parses, validates, and is still within its
-authorization window.
+run start unless a scope file exists, parses, validates, carries a valid
+signature from a trusted key, and is still within its authorization window.
 """
 
 from __future__ import annotations
@@ -11,9 +11,11 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from cryptography.exceptions import InvalidSignature
 from pydantic import ValidationError
 
 from vectrava.config.scope import ScopeFile
+from vectrava.core.signing import trusted_public_keys, verify_scope
 
 
 class AuthorizationError(Exception):
@@ -39,7 +41,8 @@ class AuthorizationGate:
 
         Raises:
             AuthorizationError: if the file is absent, cannot be parsed, fails
-                validation, or the authorization window has elapsed.
+                validation, is unsigned, is signed by an untrusted key, fails
+                signature verification, or the authorization window has elapsed.
         """
         if not self.scope_path.exists():
             msg = f"scope file not found: {self.scope_path}"
@@ -50,6 +53,26 @@ class AuthorizationGate:
             scope = ScopeFile.model_validate(raw)
         except (ValueError, ValidationError) as exc:
             msg = f"invalid scope file {self.scope_path}: {exc}"
+            raise AuthorizationError(msg) from exc
+
+        if scope.signature is None or scope.public_key is None:
+            msg = (
+                "scope file is not signed; sign with vtra scope sign or set "
+                "VECTRAVA_TRUSTED_KEYS for the signing key"
+            )
+            raise AuthorizationError(msg)
+
+        if scope.public_key not in trusted_public_keys():
+            msg = (
+                "scope signed by an untrusted key; add the key to "
+                "VECTRAVA_TRUSTED_KEYS or sign with a trusted key"
+            )
+            raise AuthorizationError(msg)
+
+        try:
+            verify_scope(scope)
+        except InvalidSignature as exc:
+            msg = "scope signature verification failed"
             raise AuthorizationError(msg) from exc
 
         deadline = scope.authorized_until
