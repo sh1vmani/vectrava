@@ -186,5 +186,10 @@ def test_padding_threshold_custom_reaches_probe(
 
 def test_padding_threshold_below_one_rejected() -> None:
     result = runner.invoke(app, ["scan", "dow", "--padding-threshold", "0.5"])
+    # Typer's FloatRange rejection exits 2 via SystemExit, not by raising
+    # an unhandled exception. We assert the structural signal (exit code
+    # plus no unhandled exception) rather than substring-matching the
+    # Rich-formatted error panel, which gets width-truncated under a
+    # narrow CI tty and may not contain the flag name.
     assert result.exit_code == 2
-    assert "padding-threshold" in _combined(result).lower()
+    assert result.exception is None or isinstance(result.exception, SystemExit)
