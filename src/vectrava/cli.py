@@ -424,6 +424,75 @@ def scan_ipi(
     )
 
 
+@scan_app.command("rag")
+def scan_rag(
+    scope: Annotated[
+        Path | None,
+        typer.Option(help="Path to the signed scope authorization file."),
+    ] = None,
+    target: Annotated[
+        str | None,
+        typer.Option(help="Target base URL. Must be listed in the scope file."),
+    ] = None,
+    endpoint: Annotated[
+        str | None,
+        typer.Option(help="Override the probe default endpoint."),
+    ] = None,
+    api_key_env: Annotated[
+        str | None,
+        typer.Option("--api-key-env", help="Env var holding the target API key (BYOK)."),
+    ] = None,
+    only: Annotated[
+        str | None,
+        typer.Option(help="Run only the named probe."),
+    ] = None,
+    list_probes: Annotated[
+        bool,
+        typer.Option("--list", "-l", help="List rag probes and exit. No scope or target needed."),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Estimate token cost without making API calls."),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Skip the cost confirmation prompt."),
+    ] = False,
+    output: Annotated[
+        Path | None,
+        typer.Option(help="Output file path. Defaults to findings.sarif."),
+    ] = None,
+    output_format: Annotated[
+        str,
+        typer.Option("--format", help="Output format: sarif, json, or html."),
+    ] = "sarif",
+    model: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            help="Model identifier sent in the chat-completions request body (e.g. gpt-4o-mini).",
+        ),
+    ] = "gpt-4o-mini",
+) -> None:
+    """Run RAG pipeline boundary probes against TARGET."""
+    _run_scan(
+        "rag",
+        scope=scope,
+        target=target,
+        endpoint=endpoint,
+        api_key_env=api_key_env,
+        only=only,
+        list_probes=list_probes,
+        dry_run=dry_run,
+        yes=yes,
+        output=output,
+        output_format=output_format,
+        threshold=15.0,
+        padding_threshold=4.0,
+        model=model,
+    )
+
+
 @scope_app.command("new-key")
 def scope_new_key(
     out_dir: Annotated[
