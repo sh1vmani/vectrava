@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from vectrava.core.http import post_with_retry
 from vectrava.core.probe import Probe, ProbeError
+from vectrava.core.probe_helpers import extract_chat_completion_content
 from vectrava.core.registry import register
 from vectrava.core.result import Severity
 
@@ -123,7 +124,7 @@ class ExfiltrationAttemptProbe(Probe):
                     details={"status": response.status_code, "injection_label": label},
                 )
 
-            content = _extract_content(response.json(), label, self.name)
+            content = extract_chat_completion_content(response.json(), label, self.name)
 
             if canary in content:
                 evidence: dict[str, JsonValue] = {
@@ -150,31 +151,3 @@ class ExfiltrationAttemptProbe(Probe):
                     )
                 )
         return findings
-
-
-# Deliberate duplication of direct_override._extract_content. Extracting the
-# shared helper to a common location is a follow-up refactor commit that lands
-# after this probe; copying keeps this commit self-contained and avoids coupling
-# probes through a private name in the interim.
-def _extract_content(body: object, label: str, probe_name: str) -> str:
-    """Pull choices[0].message.content from an OpenAI-shaped response body.
-
-    Raises:
-        ProbeError: if the response is not shaped as expected.
-    """
-    try:
-        choices = body["choices"]  # type: ignore[index]
-        content = choices[0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ProbeError(
-            "target response was not a chat-completions object with message content",
-            probe_name=probe_name,
-            details={"injection_label": label},
-        ) from exc
-    if not isinstance(content, str):
-        raise ProbeError(
-            "target response message content was not a string",
-            probe_name=probe_name,
-            details={"injection_label": label},
-        )
-    return content
