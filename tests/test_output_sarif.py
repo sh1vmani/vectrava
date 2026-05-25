@@ -161,6 +161,17 @@ def test_write_sarif_writes_file_and_validates(tmp_path: Path) -> None:
     _validate(data)
 
 
+def test_write_sarif_emits_trailing_newline(tmp_path: Path) -> None:
+    output = tmp_path / "out.sarif"
+    write_sarif([_finding()], output)
+    raw = output.read_bytes()
+    assert raw.endswith(b"\n")
+    assert not raw.endswith(b"\n\n")
+    assert not raw.startswith(b"\xef\xbb\xbf")
+    text = output.read_text(encoding="utf-8")
+    assert json.loads(text)["version"] == "2.1.0"
+
+
 def test_write_sarif_validation_failure_raises_and_does_not_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

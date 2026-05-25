@@ -272,4 +272,4 @@ def write_sarif(
     )
     if validate:
         _validate(log)
-    output_path.write_text(json.dumps(log, indent=2, ensure_ascii=False), encoding="utf-8")
+    output_path.write_text(json.dumps(log, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
