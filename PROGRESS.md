@@ -747,9 +747,9 @@ State at end of Day 4:
 
 ### Not done
 
-- Probe logic for all three modules.
-- HTML output writer (`html.py` raises `NotImplementedError`;
-  SARIF and JSON writers are implemented).
+- rag module: no probes implemented yet. dow has three
+  (`token_amplification`, `output_padding`,
+  `model_substitution`), ipi has one (`direct_override`).
 
 ## Review checkpoints
 
