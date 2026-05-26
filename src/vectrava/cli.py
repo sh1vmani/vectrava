@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import contextlib
 import getpass
+import hashlib
 import importlib
+import json
 import os
 import socket
 import sys
@@ -26,7 +28,7 @@ import typer
 from vectrava import __version__
 from vectrava.config.byok import BYOKConfig
 from vectrava.core import registry
-from vectrava.core.audit import AuditError, AuditWriter
+from vectrava.core.audit import _CHAIN_SENTINEL, AuditError, AuditWriter
 from vectrava.core.auth_gate import AuthorizationError, AuthorizationGate
 from vectrava.core.probe import Probe, ProbeContext, ProbeError
 from vectrava.core.result import Finding
@@ -75,6 +77,11 @@ scope_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(scope_app, name="scope")
+audit_app = typer.Typer(
+    help="Audit log inspection.",
+    no_args_is_help=True,
+)
+app.add_typer(audit_app, name="audit")
 
 
 def _estimated_cost_usd(tokens: int) -> float:
@@ -756,6 +763,57 @@ def scope_verify(
     except (ValueError, InvalidSignature) as exc:
         typer.secho(f"verification failed: {exc}", err=True, fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc
+
+
+@audit_app.command("verify")
+def audit_verify(
+    audit_path: Annotated[Path, typer.Argument(help="Audit log file to verify.")],
+) -> None:
+    """Walk the audit log's hash chain and report the first tampered record.
+
+    Exits 0 when the chain is intact (an empty log verifies vacuously). Exits 1,
+    naming the offending 1-based line, on a malformed record or a broken link
+    (modification, deletion, reordering, or insertion all surface as a prev_hash
+    mismatch). Legacy records with no prev_hash field are skipped; the first
+    chained record after them anchors to the prior line's hash.
+    """
+    # Read bytes and split on "\n" so we hash exactly the bytes on disk (matching
+    # the writer's _read_tail_line), independent of platform newline translation.
+    raw = audit_path.read_bytes()
+    line_byte_list = raw.split(b"\n")
+    if line_byte_list and line_byte_list[-1] == b"":
+        line_byte_list = line_byte_list[:-1]  # drop the empty element after the final newline
+    prev_line_hash: str | None = None
+    count = 0
+    for line_no, line_bytes in enumerate(line_byte_list, start=1):
+        count += 1
+        try:
+            record = json.loads(line_bytes.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as exc:
+            typer.secho(f"line {line_no}: malformed JSON", err=True, fg=typer.colors.RED)
+            raise typer.Exit(code=1) from exc
+        line_hash = hashlib.sha256(line_bytes).hexdigest()
+        if isinstance(record, dict) and "prev_hash" in record:
+            prev_hash = record["prev_hash"]
+            if prev_line_hash is None:
+                if prev_hash != _CHAIN_SENTINEL:
+                    typer.secho(
+                        f"line {line_no}: chain root prev_hash {prev_hash} does not equal "
+                        "sentinel; a predecessor may have been removed",
+                        err=True,
+                        fg=typer.colors.RED,
+                    )
+                    raise typer.Exit(code=1)
+            elif prev_hash != prev_line_hash:
+                typer.secho(
+                    f"line {line_no}: prev_hash {prev_hash} does not equal sha256 of prior "
+                    f"record {prev_line_hash}",
+                    err=True,
+                    fg=typer.colors.RED,
+                )
+                raise typer.Exit(code=1)
+        prev_line_hash = line_hash
+    typer.echo(f"audit chain intact ({count} records)")
 
 
 if __name__ == "__main__":

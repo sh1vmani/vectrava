@@ -52,6 +52,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTML reports now render finding evidence beyond the conversation transcript:
   probe-emitted scalar fields, status counts, and other evidence keys appear in
   an expandable Evidence block per finding.
+- `AuditWriter` chains records via a SHA-256 `prev_hash` field, and the new
+  `vtra audit verify <path>` walks the chain to detect post-scan tampering
+  (insertion, deletion, reordering, modification). Mixed-mode logs (legacy
+  records followed by chained ones) verify cleanly; the first chained record
+  after legacy ones anchors to the prior line's hash. The audit log is now
+  written LF-only regardless of platform so the chain bytes are stable;
+  pre-existing Windows logs with CRLF line endings still verify correctly. The
+  chain cannot detect a fully-truncated log without an external anchor, which is
+  a documented v1 limitation. Concurrent writers to one audit-log path break
+  chain integrity, not just record ordering; single-writer-per-path is the
+  required deployment model until file locking is added.
 - `examples/scope.example.json` template and accompanying `examples/README.md`
   documenting the copy / edit / sign workflow.
 

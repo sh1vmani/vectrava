@@ -41,6 +41,9 @@ if TYPE_CHECKING:
 
 _CREDENTIAL_FINGERPRINT_LEN = 12
 _SIGNATURE_FINGERPRINT_LEN = 16
+# 64-char sentinel meaning "no predecessor"; a valid SHA-256 hex shape that
+# reads obviously as the chain root.
+_CHAIN_SENTINEL = "0" * 64
 
 
 class AuditError(Exception):
@@ -68,6 +71,39 @@ def signature_fingerprint(signature: str) -> str:
 def file_sha256(path: Path) -> str:
     """Return the full SHA-256 hex digest of a file's bytes."""
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _read_tail_line(path: Path) -> bytes | None:
+    """Return the last line's bytes (without the trailing newline), or None.
+
+    Returns None when the file does not exist or is empty. Seeks from the end and
+    scans backward in small chunks to the previous newline, so the read is O(1) in
+    the log size rather than O(n) per append. The no-final-newline case is handled
+    defensively: the whole last line is returned even without a terminator.
+    """
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, 2)
+            file_size = handle.tell()
+            if file_size == 0:
+                return None
+            chunk = 4096
+            pos = file_size
+            buf = b""
+            while pos > 0:
+                step = min(chunk, pos)
+                pos -= step
+                handle.seek(pos)
+                buf = handle.read(step) + buf
+                # Strip a single trailing newline (the record terminator), then
+                # look for the boundary that starts the last line.
+                trimmed = buf[:-1] if buf.endswith(b"\n") else buf
+                idx = trimmed.rfind(b"\n")
+                if idx != -1:
+                    return trimmed[idx + 1 :]
+            return buf[:-1] if buf.endswith(b"\n") else buf
+    except OSError:
+        return None
 
 
 @dataclass
@@ -101,6 +137,10 @@ class AuditRecord:
     runner_host: str | None = None
     runner_user: str | None = None
     runner_pid: int | None = None
+    # SHA-256 hex of the prior record's on-disk line bytes, or the sentinel for
+    # the chain root. Set by flush(); optional so records built directly in tests
+    # without flushing remain valid.
+    prev_hash: str | None = None
 
 
 class AuditWriter:
@@ -108,6 +148,12 @@ class AuditWriter:
 
     A writer with path None is disabled: every method runs but preflight and
     flush are no-ops, so callers need not branch on whether auditing is enabled.
+
+    Records are hash-chained: each flush sets prev_hash to the SHA-256 of the
+    prior record's on-disk line bytes (or the sentinel for the first record), so
+    `vtra audit verify` can detect post-scan tampering. Single-writer-per-path is
+    required for chain integrity: concurrent writers to one path each read the
+    same tail and both append, producing a forked chain that fails verification.
     """
 
     def __init__(self, path: Path | None) -> None:
@@ -216,8 +262,16 @@ class AuditWriter:
             return
         if self._record.ended_at is None:
             self._record.ended_at = datetime.now(UTC).isoformat()
+        # Chain link: hash the prior record's on-disk bytes, or the sentinel for
+        # the first record. flush() owns this field regardless of any prior value.
+        tail = _read_tail_line(self._path)
+        self._record.prev_hash = (
+            _CHAIN_SENTINEL if tail is None else hashlib.sha256(tail).hexdigest()
+        )
         line = json.dumps(asdict(self._record), default=str, separators=(",", ":"))
-        with self._path.open("a", encoding="utf-8") as handle:
+        # newline="\n" disables platform newline translation so the log is LF-only
+        # and byte-identical across platforms; the hash chain depends on stable bytes.
+        with self._path.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(line + "\n")
         self._flushed = True
         print(f"audit record written to {self._path.resolve()}", file=sys.stderr)

@@ -15,8 +15,10 @@ import pytest
 
 from vectrava.config.scope import ScopeFile
 from vectrava.core.audit import (
+    _CHAIN_SENTINEL,
     AuditError,
     AuditWriter,
+    _read_tail_line,
     credential_fingerprint,
     file_sha256,
     signature_fingerprint,
@@ -200,3 +202,73 @@ def test_record_with_newline_in_field_stays_one_line(tmp_path: Path) -> None:
     assert raw.count("\n") == 1
     record: Any = json.loads(raw)
     assert record["arguments"] == ["scan", "dow", "line1\nline2"]
+
+
+# --- hash chaining ---------------------------------------------------------
+
+
+def test_flush_first_record_uses_sentinel_prev_hash(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    writer = AuditWriter(path)
+    writer.preflight()
+    _stamp(writer)
+    writer.set_outcome("completed_clean", 0)
+    writer.flush()
+
+    record: Any = json.loads(_read_lines(path)[0])
+    assert record["prev_hash"] == _CHAIN_SENTINEL
+
+
+def test_flush_subsequent_record_chains_to_prior_line(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    first = AuditWriter(path)
+    first.preflight()
+    _stamp(first)
+    first.set_outcome("completed_clean", 0)
+    first.flush()
+    line_a = _read_lines(path)[0]
+
+    second = AuditWriter(path)
+    second.preflight()
+    _stamp(second)
+    second.set_outcome("completed_clean", 0)
+    second.flush()
+
+    record_a: Any = json.loads(_read_lines(path)[0])
+    record_b: Any = json.loads(_read_lines(path)[1])
+    assert record_a["prev_hash"] == _CHAIN_SENTINEL
+    assert record_b["prev_hash"] == hashlib.sha256(line_a.encode("utf-8")).hexdigest()
+
+
+def test_flush_chains_after_legacy_record(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    # A pre-change record: no prev_hash field.
+    legacy_line = json.dumps(
+        {"schema_version": "1", "outcome": "completed_clean"}, separators=(",", ":")
+    )
+    path.write_text(legacy_line + "\n", encoding="utf-8", newline="\n")
+
+    writer = AuditWriter(path)
+    writer.preflight()
+    _stamp(writer)
+    writer.set_outcome("completed_clean", 0)
+    writer.flush()
+
+    new_record: Any = json.loads(_read_lines(path)[1])
+    assert new_record["prev_hash"] == hashlib.sha256(legacy_line.encode("utf-8")).hexdigest()
+
+
+def test_read_tail_line_returns_none_for_missing_file(tmp_path: Path) -> None:
+    assert _read_tail_line(tmp_path / "does-not-exist.jsonl") is None
+
+
+def test_read_tail_line_returns_none_for_empty_file(tmp_path: Path) -> None:
+    path = tmp_path / "empty.jsonl"
+    path.write_text("", encoding="utf-8")
+    assert _read_tail_line(path) is None
+
+
+def test_read_tail_line_returns_last_line_no_trailing_newline(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    path.write_text("line1\nline2", encoding="utf-8")  # no trailing newline
+    assert _read_tail_line(path) == b"line2"
