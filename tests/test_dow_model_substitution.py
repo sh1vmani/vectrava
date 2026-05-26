@@ -186,3 +186,15 @@ def test_probe_error_propagates() -> None:
 
     with _client(handler) as client, pytest.raises(ProbeError, match="HTTP 400"):
         ModelSubstitutionProbe().run(_ctx(client))
+
+
+def test_required_classvars_set() -> None:
+    assert ModelSubstitutionProbe.name == "model_substitution"
+    assert isinstance(ModelSubstitutionProbe.name, str)
+    assert ModelSubstitutionProbe.module == "dow"
+    assert isinstance(ModelSubstitutionProbe.module, str)
+    assert isinstance(ModelSubstitutionProbe.description, str)
+    assert ModelSubstitutionProbe.baseline_severity == Severity.MEDIUM
+    assert isinstance(ModelSubstitutionProbe.baseline_severity, Severity)
+    assert ModelSubstitutionProbe.estimated_tokens_per_run == 1 * (30 + 16)
+    assert isinstance(ModelSubstitutionProbe.estimated_tokens_per_run, int)

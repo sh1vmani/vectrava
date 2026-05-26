@@ -20,6 +20,7 @@ from vectrava.config.scope import ScopeFile
 from vectrava.core import registry
 from vectrava.core.probe import ProbeContext, ProbeError
 from vectrava.core.registry import register
+from vectrava.core.result import Severity
 from vectrava.dow.probes.token_amplification import (
     PROMPTS,
     TokenAmplificationProbe,
@@ -177,3 +178,15 @@ def test_endpoint_override_is_used_for_url() -> None:
         TokenAmplificationProbe().run(_ctx(client, endpoint="/custom/llm"))
 
     assert set(seen) == {"/custom/llm"}
+
+
+def test_required_classvars_set() -> None:
+    assert TokenAmplificationProbe.name == "token_amplification"
+    assert isinstance(TokenAmplificationProbe.name, str)
+    assert TokenAmplificationProbe.module == "dow"
+    assert isinstance(TokenAmplificationProbe.module, str)
+    assert isinstance(TokenAmplificationProbe.description, str)
+    assert TokenAmplificationProbe.baseline_severity == Severity.MEDIUM
+    assert isinstance(TokenAmplificationProbe.baseline_severity, Severity)
+    assert TokenAmplificationProbe.estimated_tokens_per_run == 5 * (30 + 512)
+    assert isinstance(TokenAmplificationProbe.estimated_tokens_per_run, int)

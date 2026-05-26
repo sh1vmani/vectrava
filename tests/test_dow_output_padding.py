@@ -20,6 +20,7 @@ from vectrava.config.scope import ScopeFile
 from vectrava.core import registry
 from vectrava.core.probe import ProbeContext, ProbeError
 from vectrava.core.registry import register
+from vectrava.core.result import Severity
 from vectrava.dow.probes.output_padding import PROMPTS, OutputPaddingProbe
 
 Handler = Callable[[httpx.Request], httpx.Response]
@@ -191,3 +192,15 @@ def test_evidence_keys_present() -> None:
     assert isinstance(finding.evidence["expected_max_content_tokens"], int)
     assert isinstance(finding.evidence["prompt_category"], str)
     assert isinstance(finding.evidence["endpoint"], str)
+
+
+def test_required_classvars_set() -> None:
+    assert OutputPaddingProbe.name == "output_padding"
+    assert isinstance(OutputPaddingProbe.name, str)
+    assert OutputPaddingProbe.module == "dow"
+    assert isinstance(OutputPaddingProbe.module, str)
+    assert isinstance(OutputPaddingProbe.description, str)
+    assert OutputPaddingProbe.baseline_severity == Severity.MEDIUM
+    assert isinstance(OutputPaddingProbe.baseline_severity, Severity)
+    assert OutputPaddingProbe.estimated_tokens_per_run == 4 * (30 + 256)
+    assert isinstance(OutputPaddingProbe.estimated_tokens_per_run, int)

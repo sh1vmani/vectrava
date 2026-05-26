@@ -21,6 +21,7 @@ from vectrava.config.scope import ScopeFile
 from vectrava.core import registry
 from vectrava.core.probe import ProbeContext, ProbeError
 from vectrava.core.registry import register
+from vectrava.core.result import Severity
 from vectrava.dow.probes.error_amplification import SENTINEL_MODEL, ErrorAmplificationProbe
 
 Handler = Callable[[httpx.Request], httpx.Response]
@@ -193,3 +194,15 @@ def test_missing_credentials_raises_probe_error() -> None:
         pytest.raises(ProbeError, match="requires credentials"),
     ):
         ErrorAmplificationProbe().run(_ctx(client, credentials=None))
+
+
+def test_required_classvars_set() -> None:
+    assert ErrorAmplificationProbe.name == "error_amplification"
+    assert isinstance(ErrorAmplificationProbe.name, str)
+    assert ErrorAmplificationProbe.module == "dow"
+    assert isinstance(ErrorAmplificationProbe.module, str)
+    assert isinstance(ErrorAmplificationProbe.description, str)
+    assert ErrorAmplificationProbe.baseline_severity == Severity.MEDIUM
+    assert isinstance(ErrorAmplificationProbe.baseline_severity, Severity)
+    assert ErrorAmplificationProbe.estimated_tokens_per_run == 50_000 + 3 * (30 + 16)
+    assert isinstance(ErrorAmplificationProbe.estimated_tokens_per_run, int)
