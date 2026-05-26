@@ -1,8 +1,8 @@
 # vectrava project rules
 
 vectrava is an AI application security scanner with three modules: dow
-(Denial-of-Wallet cost amplification probes), ipi (indirect prompt injection
-payload generators), and rag (RAG pipeline boundary probes).
+(Denial-of-Wallet), ipi (indirect prompt injection), and rag (RAG pipeline
+boundary probes).
 
 This file gives coding agents the rules and facts specific to this repository.
 It layers on top of the global rules; it does not replace them.

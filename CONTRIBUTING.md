@@ -12,6 +12,13 @@ supported.
 uv sync
 ```
 
+## Running a scan in development
+
+Running an actual scan needs a signed scope file and a target API key in the
+environment. See the [README](README.md) Quickstart and the template at
+[`examples/scope.example.json`](examples/scope.example.json) for the keypair
+generation, scope signing, and `VECTRAVA_TRUSTED_KEYS` steps.
+
 ## Before you open a pull request
 
 All of the following must pass:
@@ -19,8 +26,8 @@ All of the following must pass:
 ```sh
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy src/
-uv run pytest tests/
+uv run mypy src tests
+uv run pytest
 ```
 
 New behavior needs tests. Bug fixes should add a test that fails before the fix
@@ -38,15 +45,16 @@ module scope.
 Types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `perf`, `build`,
 `ci`, `style`, `revert`.
 
-Scopes: `dow`, `ipi`, `rag`, `cli`, `config`, `docs`, `ci`, `test`, `build`,
-`release`, `repo`.
+Scopes: `dow`, `ipi`, `rag`, `cli`, `config`, `core`, `output`, `docs`, `ci`,
+`test`, `build`, `release`, `repo`, `scorecard`, `codeql`, `dco`, `secrets`,
+`workflow`.
 
 Examples:
 
 ```
 feat(dow): add cost amplification meter
 fix(cli): handle missing scope file gracefully
-docs(ipi): document payload taxonomy
+docs(ipi): document refusal bypass probe
 ```
 
 ## Sign-off (DCO)
@@ -66,6 +74,16 @@ Signed-off-by: Your Name <your.email@example.com>
 ```
 
 Pull requests without a sign-off on every commit are blocked by CI.
+
+## Git hooks
+
+The repository ships local git hooks under `.git/hooks/`, committed as part of
+the repo so a fresh clone gets them automatically. They inject the DCO
+`Signed-off-by` trailer for you, reject a commit whose message uses a scope
+outside the list above, and reject any commit message or staged file content
+that contains an em dash, an en dash, or an AI-authorship signature phrase. If a
+commit is blocked or reformatted locally, that is the hooks keeping history
+consistent with the rules in this document.
 
 ## Style
 
