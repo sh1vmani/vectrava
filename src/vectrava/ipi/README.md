@@ -1,15 +1,17 @@
-# ipi: Indirect prompt injection payloads
+# ipi - Indirect prompt injection probes
 
-Generators for indirect prompt injection test payloads. The ipi module produces
-structured payloads that probe whether untrusted content reaching a model
-(documents, web pages, tool output) can override the model's instructions.
+Indirect prompt injection probes for AI applications. The `ipi` module tests
+whether untrusted content reaching a model (documents, tool output, or a crafted
+user turn) can override the operator's instructions, extract confidential
+context, or talk the model past its refusal behavior. Each probe plants a fresh
+random canary token and reports a finding only when that exact token comes back
+in the response. Probes run only against targets named in a signed scope file.
 
-## Status
+| Probe | Severity | What it tests |
+| ----- | -------- | ------------- |
+| `direct_override` | HIGH | Resistance to a direct instruction-override payload smuggled in untrusted document content. |
+| `exfiltration_attempt` | CRITICAL | Whether an injected user message extracts a confidential token from the system prompt. |
+| `refusal_bypass` | HIGH | Whether jailbreak framings (hypothetical scenario, educational pretext, roleplay override) defeat the model's refusal. |
 
-Early development. No generators are implemented yet.
-
-## Posture
-
-Defensive only. Payloads are for testing systems you are authorized to test. ipi
-runs only against targets named in a signed scope file. It does not target
-third-party systems and refuses to run without authorization.
+See the top-level [README](../../../README.md) for installation, scope signing,
+and running.

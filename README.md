@@ -1,84 +1,145 @@
 # vectrava
 
-AI application security scanner. vectrava probes the failure modes that show up
-specifically in AI systems and reports them so they can be fixed.
+AI application security scanner. Denial-of-Wallet, indirect prompt injection,
+and RAG boundary probes.
 
-It ships three modules:
+## What it is
 
-- **dow** (Denial-of-Wallet): cost amplification probes. Measures how small
-  inputs can drive disproportionate downstream cost.
-- **ipi** (Indirect Prompt Injection): payload generators that test whether
-  untrusted content reaching a model can override its instructions.
-- **rag** (RAG boundary): probes for the trust boundaries of a
-  retrieval-augmented generation pipeline.
+vectrava is a defensive scanner for AI applications. It runs only against
+targets you are authorized to test: every scan is gated on an Ed25519-signed
+scope file that names the authorized targets and a deadline, and target
+credentials are read from environment variables at run time (BYOK), never
+bundled with the tool or written to config. The probe payloads are working
+exploits and are visible in source under `src/vectrava/{dow,ipi,rag}/probes/`;
+the rationale for publishing them is documented in the dual-use section of
+[SECURITY.md](SECURITY.md).
 
-## Status
+## What it tests
 
-Early development. The package structure, authorization gate, and output writer
-interfaces are in place. The probe logic is not implemented yet. Interfaces and
-output formats may change before the first tagged release.
+vectrava ships three probe modules.
 
-## Defensive posture
+`dow` (Denial-of-Wallet) measures how small, well-formed inputs can drive
+disproportionate downstream cost: large outputs from short prompts, padded
+short answers, and silent model substitution.
 
-vectrava is a defensive tool. It exists to audit, find, and report failure modes
-so they can be fixed, not to attack systems you do not control. Two guards are
-enforced in code, not just documented:
+`ipi` (indirect prompt injection) tests whether untrusted content reaching the
+model can override the operator's instructions, extract confidential context,
+or talk the model past its refusal behavior.
 
-1. **Scope-file authorization.** vectrava refuses to run without a signed scope
-   file that names the targets and an authorization deadline. A run started
-   after the deadline is refused.
-2. **Bring your own key (BYOK).** vectrava never ships or stores credentials.
-   The target API key is supplied by the operator through the environment and
-   read at run time.
+`rag` (retrieval-augmented generation boundary) tests how the model handles
+adversarial retrieved content: instructions split across chunks, fabricated
+citations, and contradictions between sources.
 
-Use vectrava only against systems you own or are explicitly authorized to test.
+| Module | Probe | Severity | Attack class |
+| ------ | ----- | -------- | ------------ |
+| `dow` | `token_amplification` | HIGH | Short prompts that elicit large, costly outputs (output-to-input token ratio). |
+| `dow` | `output_padding` | HIGH | Short-answer prompts whose responses are padded beyond their natural length. |
+| `dow` | `model_substitution` | HIGH | Target silently serves a different model than the one requested. |
+| `ipi` | `direct_override` | HIGH | Instruction-override payload smuggled in untrusted data overrides the trusted task. |
+| `ipi` | `exfiltration_attempt` | CRITICAL | Injected user message extracts confidential content from the system prompt. |
+| `ipi` | `refusal_bypass` | HIGH | Jailbreak framings (hypothetical, educational pretext, roleplay) talk the model past its refusal. |
+| `rag` | `cross_document_injection` | HIGH | An instruction split across retrieved chunks is assembled and followed. |
+| `rag` | `citation_hijack` | HIGH | Adversarial chunk makes the model attribute a fabricated value to a legitimate source. |
+| `rag` | `cross_source_contradiction` | HIGH | Model prefers an adversarial value when retrieved sources contradict each other. |
+
+Severity convention: HIGH marks a demonstrated capability whose real-world
+impact depends on what the target was protecting. CRITICAL is reserved for
+outcomes that are high-impact regardless of context; currently only
+`exfiltration_attempt`, where any system-prompt leak is damaging no matter what
+the prompt held.
 
 ## Install
 
-vectrava uses [uv](https://docs.astral.sh/uv/) for environment and dependency
-management.
+Requires Python `>=3.11,<3.14` and [uv](https://docs.astral.sh/uv/).
 
 ```sh
-git clone https://github.com/sh1vmani/vectrava.git
+git clone https://github.com/sh1vmani/vectrava
 cd vectrava
 uv sync
 ```
 
-## Usage
+## Quickstart
 
-A scan requires two things: a scope file and the target API key in the
-environment.
+End to end, from a fresh checkout to a scan.
+
+Generate an Ed25519 signing keypair. This writes `vectrava_ed25519` (private)
+and `vectrava_ed25519.pub` (public) into the chosen directory.
 
 ```sh
-# The target key is supplied by you, never by vectrava.
-export TARGET_API_KEY="..."
-
-# Run a scan against the targets named in scope.json.
-uv run vectrava scan --scope ./scope.json --module dow
+uv run vtra scope new-key --out-dir .
 ```
 
-A scope file is JSON:
+Trust the public key. `VECTRAVA_TRUSTED_KEYS` is a comma-separated list of
+base64url public keys; the gate trusts nothing by default.
+
+```sh
+export VECTRAVA_TRUSTED_KEYS="$(cat ./vectrava_ed25519.pub)"
+```
+
+Write a scope file naming the authorized targets and a deadline.
 
 ```json
 {
-  "targets": ["https://api.example.test"],
+  "targets": ["https://api.openai.com/v1/chat/completions"],
   "authorized_until": "2026-12-31T23:59:59Z",
   "signed_by": "Your Name"
 }
 ```
 
-If the scope file is missing, malformed, or past its deadline, the run is
-refused before any request is made.
+Sign it with the private key.
+
+```sh
+uv run vtra scope sign ./scope.json --key ./vectrava_ed25519 --output ./scope.signed.json
+```
+
+Set the target API key in the environment. vectrava reads the variable you name
+with `--api-key-env`; it is never passed on the command line.
+
+```sh
+export OPENAI_API_KEY=sk-...
+```
+
+Run a scan.
+
+```sh
+uv run vtra scan dow --scope ./scope.signed.json \
+  --target https://api.openai.com/v1/chat/completions \
+  --api-key-env OPENAI_API_KEY
+```
+
+Flags shared across `scan dow`, `scan ipi`, and `scan rag`: `--list` enumerates
+a module's probes without scope or target, `--only` runs a single named probe,
+`--dry-run` previews token cost without making API calls, `--format` selects the
+report format (`sarif`, `json`, or `html`), `--output` sets the report path, and
+`--max-requests-per-second` caps the outbound request rate. `scan dow` adds
+`--threshold` and `--padding-threshold` to tune its cost-amplification cutoffs.
+`scan rag` adds `--num-sources` to set how many retrieved chunks each injection
+spans.
+
+## Authorization model
+
+A scope file declares which target URLs are authorized and the instant after
+which authorization lapses. A scope file is honored only when it is signed by a
+key whose public half is listed in `VECTRAVA_TRUSTED_KEYS`. Scans against
+unsigned, expired, or untrusted-key-signed scopes are refused before any network
+call is made.
+
+## BYOK
+
+Target credentials are read from an environment variable named by
+`--api-key-env` at scan time. No credentials live in config files, and none are
+bundled with the tool.
 
 ## Output formats
 
-Findings are written as SARIF v2.1.0, HTML, or JSON.
+Findings are written as SARIF v2.1.0 (the default), JSON, or HTML, selected with
+`--format`.
 
 ## Security
 
-To report a vulnerability, see [SECURITY.md](SECURITY.md). Do not open a public
-issue for security reports.
+To report a vulnerability and to read the dual-use disclosure, see
+[SECURITY.md](SECURITY.md).
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE).
