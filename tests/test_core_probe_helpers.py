@@ -123,5 +123,9 @@ def test_exchange_turn_honors_min_delay_s(monkeypatch: pytest.MonkeyPatch) -> No
         _call(client, messages, min_delay_s=0.1)
 
     # First call: no prior request on this client, so no sleep. Second call: paced.
+    # The requested sleep is min_delay_s minus the real time elapsed between the two
+    # calls, so it is positive and at most min_delay_s. Asserting a tight lower bound
+    # would couple the test to wall-clock overhead and the host timer resolution
+    # (Windows monotonic is ~15.6ms), which is exactly what flaked on a CI runner.
     assert len(sleeps) == 1
-    assert 0.099 <= sleeps[0] <= 0.1
+    assert 0 < sleeps[0] <= 0.1
