@@ -248,11 +248,13 @@ def test_post_with_retry_paces_requests_when_min_delay_positive(
     with _client(_ok) as client:
         post_with_retry(client, _URL, json={"x": 1}, headers={}, timeout=5.0, min_delay_s=0.1)
         post_with_retry(client, _URL, json={"x": 1}, headers={}, timeout=5.0, min_delay_s=0.1)
-    # First call: no prior request on this client, so no sleep.
-    # Second call: pacing gate subtracts the microsecond-scale elapsed time
-    # between calls and sleeps for the remainder, which is effectively min_delay_s.
+    # First call: no prior request on this client, so no sleep. Second call: paced.
+    # The requested sleep is min_delay_s minus the real time elapsed between the two
+    # calls, so it is positive and at most min_delay_s. Asserting a tight lower bound
+    # would couple the test to wall-clock overhead and the host timer resolution
+    # (Windows monotonic is ~15.6ms), so assert only that one capped sleep was requested.
     assert len(sleeps) == 1
-    assert 0.099 <= sleeps[0] <= 0.1
+    assert 0 < sleeps[0] <= 0.1
 
 
 def test_post_with_retry_per_client_state_independence() -> None:
