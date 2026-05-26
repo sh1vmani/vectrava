@@ -49,3 +49,44 @@ def extract_chat_completion_content(
             details={"injection_label": label},
         )
     return content
+
+
+def interleave_padding_chunks(
+    chunks: tuple[str, ...],
+    filler_chunks: tuple[str, ...],
+    target_count: int,
+) -> tuple[str, ...]:
+    """Interleave filler chunks between attack chunks to reach target_count.
+
+    Padding inserts filler chunks between attack chunks rather than appending at
+    the end. This distributes attack content across the source list as a real
+    retrieval system would, producing an adversarially realistic stress test for
+    high-density RAG pipelines.
+
+    Args:
+        chunks: The attack-pattern chunks (typically 3). Returned unchanged if
+            len(chunks) >= target_count.
+        filler_chunks: Pool of benign filler strings; cycled through if
+            target_count - len(chunks) exceeds the pool size.
+        target_count: Desired total chunk count after padding. Must be positive;
+            values <= len(chunks) skip padding entirely.
+
+    Returns:
+        A tuple of length max(len(chunks), target_count) with filler chunks
+        interleaved between the original chunks. For target_count=5 and 3 attack
+        chunks the result is [c0, f0, c1, f1, c2] (interleaved).
+    """
+    if target_count <= len(chunks):
+        return chunks
+    padding_count = target_count - len(chunks)
+    padded: list[str] = []
+    filler_iter = iter(filler_chunks[i % len(filler_chunks)] for i in range(padding_count))
+    for position, chunk in enumerate(chunks):
+        padded.append(chunk)
+        if position < len(chunks) - 1 and padding_count > 0:
+            padded.append(next(filler_iter))
+            padding_count -= 1
+    while padding_count > 0:
+        padded.append(next(filler_iter))
+        padding_count -= 1
+    return tuple(padded)

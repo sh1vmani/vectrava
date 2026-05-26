@@ -22,6 +22,7 @@ from vectrava.core import registry
 from vectrava.core.registry import register
 from vectrava.rag.probes.citation_hijack import CitationHijackProbe
 from vectrava.rag.probes.cross_document_injection import CrossDocumentInjectionProbe
+from vectrava.rag.probes.cross_source_contradiction import CrossSourceContradictionProbe
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -37,6 +38,7 @@ def _registry() -> Iterator[None]:
     registry.clear()
     register(CrossDocumentInjectionProbe)
     register(CitationHijackProbe)
+    register(CrossSourceContradictionProbe)
     yield
     registry.clear()
 
@@ -264,6 +266,86 @@ def test_citation_hijack_probe_failure_emits_unsuccessful(
     _patch_client(monkeypatch, handler)
     out = tmp_path / "out.sarif"
     result = _invoke(valid_scope_file, out, only="citation_hijack")
+
+    assert result.exit_code == 2
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert run["results"] == []
+    assert run["invocations"][0]["executionSuccessful"] is False
+    assert run["invocations"][0]["exitCode"] == 2
+
+
+def test_cross_source_clean_scan_emits_zero_findings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"message": {"content": "According to the handbook, 15 days."}}],
+            },
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="cross_source_contradiction")
+
+    assert result.exit_code == 0
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert run["results"] == []
+    assert run["invocations"][0]["executionSuccessful"] is True
+    assert run["invocations"][0]["exitCode"] == 0
+
+
+def test_cross_source_succeeds_emits_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        content = body["messages"][1]["content"]
+        match = _HEX16.search(content)
+        token = match.group(0) if match else ""
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"message": {"content": f"The entitlement is {token} days."}}],
+            },
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="cross_source_contradiction")
+
+    assert result.exit_code == 1
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert len(run["results"]) >= 1
+    rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
+    assert "cross_source_contradiction" in rule_ids
+    assert all(r["ruleId"] == "cross_source_contradiction" for r in run["results"])
+
+
+def test_cross_source_probe_failure_emits_unsuccessful(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, text="bad request")
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="cross_source_contradiction")
 
     assert result.exit_code == 2
     assert out.exists()

@@ -7,3 +7,6 @@ import.
 
 from vectrava.rag.probes import citation_hijack as _citation_hijack  # noqa: F401
 from vectrava.rag.probes import cross_document_injection as _cross_document_injection  # noqa: F401
+from vectrava.rag.probes import (
+    cross_source_contradiction as _cross_source_contradiction,  # noqa: F401
+)

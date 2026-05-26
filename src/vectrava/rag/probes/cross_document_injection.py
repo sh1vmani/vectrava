@@ -21,7 +21,10 @@ from typing import TYPE_CHECKING, ClassVar
 
 from vectrava.core.http import post_with_retry
 from vectrava.core.probe import Probe, ProbeError
-from vectrava.core.probe_helpers import extract_chat_completion_content
+from vectrava.core.probe_helpers import (
+    extract_chat_completion_content,
+    interleave_padding_chunks,
+)
 from vectrava.core.registry import register
 from vectrava.core.result import Severity
 
@@ -118,21 +121,7 @@ class CrossDocumentInjectionProbe(Probe):
         for label, chunks_template in INJECTION_PROMPTS:
             canary = secrets.token_hex(8)
             chunks = tuple(chunk.format(canary=canary) for chunk in chunks_template)
-            if num_sources > len(chunks):
-                padding_count = num_sources - len(chunks)
-                padded: list[str] = []
-                filler_iter = iter(
-                    FILLER_CHUNKS[i % len(FILLER_CHUNKS)] for i in range(padding_count)
-                )
-                for position, chunk in enumerate(chunks):
-                    padded.append(chunk)
-                    if position < len(chunks) - 1 and padding_count > 0:
-                        padded.append(next(filler_iter))
-                        padding_count -= 1
-                while padding_count > 0:
-                    padded.append(next(filler_iter))
-                    padding_count -= 1
-                chunks = tuple(padded)
+            chunks = interleave_padding_chunks(chunks, FILLER_CHUNKS, num_sources)
             sources_block = "\n\n".join(
                 f'<source id="{i + 1}">\n{chunk}\n</source>' for i, chunk in enumerate(chunks)
             )
