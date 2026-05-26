@@ -29,6 +29,7 @@ def _finding(
 def _report(
     findings: list[Finding],
     *,
+    target: str = "https://api.example.test/v1/chat/completions",
     execution_successful: bool = True,
     exit_code: int = 0,
     arguments: list[str] | None = None,
@@ -36,6 +37,7 @@ def _report(
     return build_json_report(
         findings,
         started_at=_STARTED,
+        target=target,
         execution_successful=execution_successful,
         exit_code=exit_code,
         arguments=arguments if arguments is not None else ["scan", "dow"],
@@ -47,6 +49,7 @@ def test_build_json_report_envelope_shape() -> None:
     assert set(report) == {
         "schema_version",
         "started_at",
+        "target",
         "execution_successful",
         "exit_code",
         "arguments",
@@ -97,6 +100,7 @@ def test_write_json_writes_utf8_with_trailing_newline(tmp_path: Path) -> None:
         [_finding()],
         out,
         started_at=_STARTED,
+        target="https://api.example.test/v1/chat/completions",
         execution_successful=True,
         exit_code=1,
         arguments=["scan", "dow"],
@@ -113,6 +117,7 @@ def test_write_json_preserves_key_order(tmp_path: Path) -> None:
         [_finding()],
         out,
         started_at=_STARTED,
+        target="https://api.example.test/v1/chat/completions",
         execution_successful=True,
         exit_code=0,
         arguments=[],
@@ -120,3 +125,9 @@ def test_write_json_preserves_key_order(tmp_path: Path) -> None:
     text = out.read_text(encoding="utf-8")
     pairs = json.loads(text, object_pairs_hook=list)
     assert pairs[0][0] == "schema_version"
+
+
+def test_clean_scan_target_in_metadata() -> None:
+    report = _report([], target="https://clean.test/v1/chat/completions")
+    assert report["findings"] == []
+    assert report["target"] == "https://clean.test/v1/chat/completions"

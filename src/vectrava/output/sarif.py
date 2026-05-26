@@ -186,6 +186,7 @@ def _iso_z(moment: datetime) -> str:
 def build_sarif_log(
     findings: list[Finding],
     *,
+    target: str,
     tool_version: str = __version__,
     started_at: datetime | None = None,
     ended_at: datetime | None = None,
@@ -197,6 +198,7 @@ def build_sarif_log(
 
     Args:
         findings: Scan findings to serialize.
+        target: The scan target URL, recorded on the invocation property bag.
         tool_version: Version reported in tool.driver.version.
         started_at: Scan start; emitted as startTimeUtc when provided.
         ended_at: Scan end; defaults to the current UTC instant.
@@ -221,6 +223,12 @@ def build_sarif_log(
     invocation["endTimeUtc"] = _iso_z(ended_at if ended_at is not None else datetime.now(UTC))
     if arguments is not None:
         invocation["arguments"] = cast("list[JsonValue]", list(arguments))
+    existing_properties = invocation.get("properties")
+    properties: dict[str, JsonValue] = (
+        existing_properties if isinstance(existing_properties, dict) else {}
+    )
+    properties["target"] = target
+    invocation["properties"] = properties
 
     return {
         "$schema": SARIF_SCHEMA_URI,
@@ -247,6 +255,7 @@ def write_sarif(
     findings: list[Finding],
     output_path: Path,
     *,
+    target: str,
     started_at: datetime | None = None,
     execution_successful: bool = True,
     exit_code: int | None = None,
@@ -264,6 +273,7 @@ def write_sarif(
     """
     log = build_sarif_log(
         findings,
+        target=target,
         started_at=started_at,
         ended_at=None,
         arguments=arguments,

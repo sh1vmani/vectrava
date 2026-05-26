@@ -24,6 +24,7 @@ def build_json_report(
     findings: Sequence[Finding],
     *,
     started_at: datetime,
+    target: str,
     execution_successful: bool,
     exit_code: int,
     arguments: Sequence[str],
@@ -33,6 +34,7 @@ def build_json_report(
     Args:
         findings: Scan findings to serialize.
         started_at: Scan start timestamp.
+        target: The scan target URL, recorded in the run metadata.
         execution_successful: Whether the scan completed without error.
         exit_code: Process exit code.
         arguments: Invocation arguments.
@@ -44,6 +46,7 @@ def build_json_report(
     report: dict[str, JsonValue] = {
         "schema_version": "1",
         "started_at": started_at.isoformat(),
+        "target": target,
         "execution_successful": execution_successful,
         "exit_code": exit_code,
         "arguments": cast("list[JsonValue]", list(arguments)),
@@ -57,6 +60,7 @@ def write_json(
     path: Path,
     *,
     started_at: datetime,
+    target: str,
     execution_successful: bool,
     exit_code: int,
     arguments: Sequence[str],
@@ -65,6 +69,7 @@ def write_json(
     report = build_json_report(
         findings,
         started_at=started_at,
+        target=target,
         execution_successful=execution_successful,
         exit_code=exit_code,
         arguments=arguments,

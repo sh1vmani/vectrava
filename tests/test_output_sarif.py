@@ -62,7 +62,7 @@ def _finding(
 
 
 def test_zero_findings_produces_valid_log() -> None:
-    log: Any = build_sarif_log([])
+    log: Any = build_sarif_log([], target=_TARGET)
     _validate(log)
     run = log["runs"][0]
     assert run["results"] == []
@@ -71,7 +71,7 @@ def test_zero_findings_produces_valid_log() -> None:
 
 
 def test_single_finding_includes_rule_and_artifact() -> None:
-    log: Any = build_sarif_log([_finding()])
+    log: Any = build_sarif_log([_finding()], target=_TARGET)
     run = log["runs"][0]
     rules = run["tool"]["driver"]["rules"]
     assert len(rules) == 1
@@ -95,34 +95,34 @@ def test_severity_to_level_mapping() -> None:
         Severity.CRITICAL: "error",
     }
     for severity, level in expected.items():
-        log: Any = build_sarif_log([_finding(level=severity)])
+        log: Any = build_sarif_log([_finding(level=severity)], target=_TARGET)
         assert log["runs"][0]["results"][0]["level"] == level
 
 
 def test_partial_fingerprints_are_stable() -> None:
     finding = _finding(category="enumeration")
-    first: Any = build_sarif_log([finding])
-    second: Any = build_sarif_log([finding])
+    first: Any = build_sarif_log([finding], target=_TARGET)
+    second: Any = build_sarif_log([finding], target=_TARGET)
     fp_first = first["runs"][0]["results"][0]["partialFingerprints"]["vectrava/v1"]
     fp_second = second["runs"][0]["results"][0]["partialFingerprints"]["vectrava/v1"]
     assert fp_first == fp_second
     assert len(fp_first) == 16
     int(fp_first, 16)  # raises if not hex
 
-    other: Any = build_sarif_log([_finding(category="bounded_repetition")])
+    other: Any = build_sarif_log([_finding(category="bounded_repetition")], target=_TARGET)
     fp_other = other["runs"][0]["results"][0]["partialFingerprints"]["vectrava/v1"]
     assert fp_other != fp_first
 
 
 def test_arguments_omitted_when_none() -> None:
-    log: Any = build_sarif_log([], arguments=None)
+    log: Any = build_sarif_log([], target=_TARGET, arguments=None)
     invocation = log["runs"][0]["invocations"][0]
     assert "arguments" not in invocation
 
 
 def test_arguments_emitted_when_provided() -> None:
     args = ["scan", "dow", "--api-key-env", "[REDACTED]"]
-    log: Any = build_sarif_log([], arguments=args)
+    log: Any = build_sarif_log([], target=_TARGET, arguments=args)
     invocation = log["runs"][0]["invocations"][0]
     assert invocation["arguments"] == args
 
@@ -135,7 +135,7 @@ def test_dedup_artifacts() -> None:
         _finding(target=target_b),
         _finding(target=target_a),
     ]
-    log: Any = build_sarif_log(findings)
+    log: Any = build_sarif_log(findings, target=_TARGET)
     artifacts = log["runs"][0]["artifacts"]
     assert len(artifacts) == 2
     uris = [artifact["location"]["uri"] for artifact in artifacts]
@@ -144,7 +144,7 @@ def test_dedup_artifacts() -> None:
 
 def test_unregistered_rule_id_synthesizes_fallback_rule() -> None:
     finding = _finding(rule_id="ghost_probe", level=Severity.HIGH)
-    log: Any = build_sarif_log([finding])
+    log: Any = build_sarif_log([finding], target=_TARGET)
     rules = log["runs"][0]["tool"]["driver"]["rules"]
     assert len(rules) == 1
     assert rules[0]["id"] == "ghost_probe"
@@ -154,7 +154,7 @@ def test_unregistered_rule_id_synthesizes_fallback_rule() -> None:
 
 def test_write_sarif_writes_file_and_validates(tmp_path: Path) -> None:
     output = tmp_path / "out.sarif"
-    write_sarif([_finding()], output)
+    write_sarif([_finding()], output, target=_TARGET)
     assert output.exists()
     data: Any = json.loads(output.read_text(encoding="utf-8"))
     assert data["version"] == "2.1.0"
@@ -163,7 +163,7 @@ def test_write_sarif_writes_file_and_validates(tmp_path: Path) -> None:
 
 def test_write_sarif_emits_trailing_newline(tmp_path: Path) -> None:
     output = tmp_path / "out.sarif"
-    write_sarif([_finding()], output)
+    write_sarif([_finding()], output, target=_TARGET)
     raw = output.read_bytes()
     assert raw.endswith(b"\n")
     assert not raw.endswith(b"\n\n")
@@ -181,12 +181,12 @@ def test_write_sarif_validation_failure_raises_and_does_not_write(
         lambda: {"type": "object", "required": ["__definitely_missing__"]},
     )
     with pytest.raises(SarifValidationError):
-        write_sarif([_finding()], output)
+        write_sarif([_finding()], output, target=_TARGET)
     assert not output.exists()
 
 
 def test_security_severity_numeric_emitted_on_rule_properties() -> None:
-    log: Any = build_sarif_log([_finding(level=Severity.MEDIUM)])
+    log: Any = build_sarif_log([_finding(level=Severity.MEDIUM)], target=_TARGET)
     rule = log["runs"][0]["tool"]["driver"]["rules"][0]
     assert rule["properties"]["security-severity"] == "5.0"
 
@@ -197,8 +197,16 @@ def test_evidence_preserved_in_result_properties() -> None:
         "amplification_factor": 50.0,
         "latency_ms": 12.3,
     }
-    log: Any = build_sarif_log([_finding(evidence=evidence, level=Severity.MEDIUM)])
+    log: Any = build_sarif_log([_finding(evidence=evidence, level=Severity.MEDIUM)], target=_TARGET)
     properties = log["runs"][0]["results"][0]["properties"]
     assert properties["amplification_factor"] == 50.0
     assert properties["prompt_category"] == "enumeration"
     assert properties["severity"] == "MEDIUM"
+
+
+def test_clean_scan_target_in_invocation_properties() -> None:
+    target = "https://clean.test/v1/chat/completions"
+    log: Any = build_sarif_log([], target=target)
+    invocation = log["runs"][0]["invocations"][0]
+    assert invocation["properties"]["target"] == target
+    _validate(log)

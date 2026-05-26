@@ -28,6 +28,7 @@ def _finding(
 def _report(
     findings: list[Finding],
     *,
+    target: str = "https://api.example.test/v1/chat/completions",
     execution_successful: bool = True,
     exit_code: int = 0,
     arguments: list[str] | None = None,
@@ -35,6 +36,7 @@ def _report(
     return build_html_report(
         findings,
         started_at=_STARTED,
+        target=target,
         execution_successful=execution_successful,
         exit_code=exit_code,
         arguments=arguments if arguments is not None else ["scan", "dow"],
@@ -117,6 +119,7 @@ def test_write_html_is_utf8_with_single_trailing_newline(tmp_path: Path) -> None
         [_finding()],
         out,
         started_at=_STARTED,
+        target="https://api.example.test/v1/chat/completions",
         execution_successful=True,
         exit_code=1,
         arguments=["scan", "dow"],
@@ -135,7 +138,16 @@ def test_document_has_doctype_and_lang() -> None:
 
 
 def test_metadata_and_footer_present() -> None:
-    report = _report([_finding(target="https://meta.test/v1/chat/completions")])
-    assert "https://meta.test/v1/chat/completions" in report
+    # The metadata Target row reflects the scan-level target parameter, not the
+    # finding's target: the finding here carries the default target, the scan
+    # target is distinct, and the metadata row shows the scan target.
+    report = _report([_finding()], target="https://meta.test/v1/chat/completions")
+    assert "<tr><th>Target</th><td>https://meta.test/v1/chat/completions</td></tr>" in report
     assert "Report generated at" in report
     assert "<title>vectrava scan report</title>" in report
+
+
+def test_clean_scan_renders_target_in_metadata() -> None:
+    report = _report([], target="https://clean.test/v1/chat/completions")
+    assert "<tr><th>Target</th><td>https://clean.test/v1/chat/completions</td></tr>" in report
+    assert "No findings reported." in report

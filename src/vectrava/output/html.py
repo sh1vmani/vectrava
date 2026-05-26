@@ -64,6 +64,7 @@ def build_html_report(
     findings: Sequence[Finding],
     *,
     started_at: datetime,
+    target: str,
     execution_successful: bool,
     exit_code: int,
     arguments: Sequence[str],
@@ -77,6 +78,7 @@ def build_html_report(
     Args:
         findings: Scan findings to render.
         started_at: Scan start timestamp.
+        target: The scan target URL, rendered in the metadata block.
         execution_successful: Whether the scan completed without error.
         exit_code: Process exit code, mirroring SARIF invocation semantics.
         arguments: Invocation arguments. Accepted to match the writer interface;
@@ -91,7 +93,7 @@ def build_html_report(
     start = started_at if started_at.tzinfo is not None else started_at.replace(tzinfo=UTC)
     elapsed = (generated_at - start).total_seconds()
     duration = f"{elapsed:.3f}s" if elapsed >= 0 else "n/a"
-    target = _h(findings[0].target) if findings else "n/a"
+    target_display = _h(target)
 
     parts: list[str] = [
         "<!DOCTYPE html>",
@@ -106,7 +108,7 @@ def build_html_report(
         "<h1>vectrava</h1>",
         '<p class="subtitle">Scan report</p>',
         '<table class="meta">',
-        f"<tr><th>Target</th><td>{target}</td></tr>",
+        f"<tr><th>Target</th><td>{target_display}</td></tr>",
         f"<tr><th>Started</th><td>{_h(_iso_z(start))}</td></tr>",
         f"<tr><th>Finished</th><td>{_h(_iso_z(generated_at))}</td></tr>",
         f"<tr><th>Duration</th><td>{_h(duration)}</td></tr>",
@@ -150,6 +152,7 @@ def write_html(
     path: Path,
     *,
     started_at: datetime,
+    target: str,
     execution_successful: bool,
     exit_code: int,
     arguments: Sequence[str],
@@ -158,6 +161,7 @@ def write_html(
     document = build_html_report(
         findings,
         started_at=started_at,
+        target=target,
         execution_successful=execution_successful,
         exit_code=exit_code,
         arguments=arguments,
