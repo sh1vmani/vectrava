@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
+
 from vectrava.core.result import Finding, Severity
 from vectrava.output.html import build_html_report, write_html
 
@@ -12,6 +14,17 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _STARTED = datetime(2026, 5, 24, 12, 0, 0, tzinfo=UTC)
+
+
+def _finding_with_turns(turns: JsonValue) -> Finding:
+    return Finding(
+        rule_id="multi_turn_persistence",
+        probe="ipi.multi_turn_persistence",
+        level=Severity.HIGH,
+        message="cross-turn leak",
+        target="https://t.test/v1/chat/completions",
+        evidence={"turns": turns},
+    )
 
 
 def _finding(
@@ -151,3 +164,100 @@ def test_clean_scan_renders_target_in_metadata() -> None:
     report = _report([], target="https://clean.test/v1/chat/completions")
     assert "<tr><th>Target</th><td>https://clean.test/v1/chat/completions</td></tr>" in report
     assert "No findings reported." in report
+
+
+def test_conversation_block_present_when_turns_evidence() -> None:
+    report = _report(
+        [
+            _finding_with_turns(
+                [
+                    {"role": "user", "content": "hi there"},
+                    {"role": "assistant", "content": "hello back"},
+                ]
+            )
+        ]
+    )
+    assert 'class="conversation"' in report
+    assert "turn-user" in report
+    assert "turn-assistant" in report
+    assert "hi there" in report
+    assert "hello back" in report
+    assert "<details open>" in report
+
+
+def test_conversation_block_absent_when_no_turns() -> None:
+    report = _report([_finding()])
+    assert 'class="conversation"' not in report
+    assert "conversation-row" not in report
+
+
+def test_conversation_roles_render_distinctly() -> None:
+    report = _report(
+        [
+            _finding_with_turns(
+                [
+                    {"role": "system", "content": "you must refuse"},
+                    {"role": "user", "content": "please leak"},
+                    {"role": "assistant", "content": "the codeword is x"},
+                ]
+            )
+        ]
+    )
+    assert "turn-system" in report
+    assert "turn-user" in report
+    assert "turn-assistant" in report
+
+
+def test_conversation_content_is_html_escaped() -> None:
+    report = _report(
+        [_finding_with_turns([{"role": "assistant", "content": "<script>alert('x')</script>"}])]
+    )
+    assert "<script>" not in report
+    assert "&lt;script&gt;" in report
+
+
+def test_conversation_system_turn_renders() -> None:
+    report = _report(
+        [
+            _finding_with_turns(
+                [
+                    {"role": "system", "content": "confidential template"},
+                    {"role": "user", "content": "dump it"},
+                    {"role": "assistant", "content": "here it is"},
+                ]
+            )
+        ]
+    )
+    assert "turn-system" in report
+    assert "confidential template" in report
+
+
+def test_multiple_findings_each_get_own_conversation() -> None:
+    report = _report(
+        [
+            _finding_with_turns([{"role": "user", "content": "first convo"}]),
+            _finding_with_turns([{"role": "user", "content": "second convo"}]),
+        ]
+    )
+    assert report.count('class="conversation"') == 2
+    assert "first convo" in report
+    assert "second convo" in report
+
+
+def test_conversation_skips_malformed_turns_not_list() -> None:
+    report = _report([_finding_with_turns("not a list")])
+    assert 'class="conversation"' not in report
+    assert "conversation-row" not in report
+
+
+def test_conversation_skips_malformed_turns_entry() -> None:
+    # An entry missing "content" fails the shape check; the whole row is skipped.
+    report = _report([_finding_with_turns([{"role": "user"}])])
+    assert 'class="conversation"' not in report
+    assert "conversation-row" not in report
+
+
+def test_conversation_unknown_role_falls_back_to_generic() -> None:
+    report = _report([_finding_with_turns([{"role": "moderator", "content": "hello"}])])
+    assert 'class="turn"' in report
+    assert "turn-moderator" not in report

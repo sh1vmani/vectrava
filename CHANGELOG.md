@@ -47,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   authorization deadline, a finding-severity summary, runner identity, and a
   SHA-256 credential fingerprint (never the credential value). Fail-closed when
   the path is unwritable.
+- HTML report now renders `evidence['turns']` as an expandable conversation
+  transcript for multi-turn findings.
 - `examples/scope.example.json` template and accompanying `examples/README.md`
   documenting the copy / edit / sign workflow.
 

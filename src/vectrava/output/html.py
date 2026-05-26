@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from pydantic import JsonValue
+
     from vectrava.core.result import Finding
 
 _STYLE = """<style>
@@ -44,9 +46,20 @@ td.sev-error { background: #fce8e6; }
 td.sev-warning { background: #fef7e0; }
 td.sev-note { background: #e8f0fe; }
 .empty { color: #555; font-style: italic; }
+.conversation { display: flex; flex-direction: column; gap: 0.5rem; margin: 0.5rem 0 0.25rem; }
+.turn { border-left: 4px solid #bbb; padding: 0.35rem 0.6rem; background: #fafafa; }
+.turn-system { border-left-color: #9aa0a6; background: #f1f3f4; font-style: italic; }
+.turn-user { border-left-color: #4285f4; background: #e8f0fe; }
+.turn-assistant { border-left-color: #34a853; background: #e6f4ea; }
+.role-label { font-weight: 700; text-transform: uppercase; font-size: 0.7rem;
+  letter-spacing: 0.05em; color: #555; margin-bottom: 0.2rem; }
+.turn-content { white-space: pre-wrap; word-break: break-word; max-height: 20rem;
+  overflow-y: auto; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
 footer { margin-top: 2rem; color: #777; font-size: 0.85rem;
   border-top: 1px solid #eee; padding-top: 0.75rem; }
 </style>"""
+
+_CONVERSATION_ROLES = frozenset({"system", "user", "assistant"})
 
 
 def _h(s: str) -> str:
@@ -58,6 +71,43 @@ def _iso_z(moment: datetime) -> str:
     """Return an ISO 8601 timestamp with a Z suffix, normalizing to UTC."""
     aware = moment if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
     return aware.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _render_conversation(turns: JsonValue) -> str | None:
+    """Render an evidence "turns" list as a conversation sub-row, or None.
+
+    Returns None (so the caller emits no extra row) when turns is not a non-empty
+    list of dicts each carrying string "role" and "content". When well-formed,
+    returns a single colspan'd table row whose cell holds an expandable, default-
+    open chat transcript. Role and content are escaped through _h; the per-role
+    CSS class is only applied for the known roles, never a value from the data.
+    """
+    if not isinstance(turns, list) or not turns:
+        return None
+    blocks: list[str] = []
+    for entry in turns:
+        if not isinstance(entry, dict):
+            return None
+        role = entry.get("role")
+        content = entry.get("content")
+        if not isinstance(role, str) or not isinstance(content, str):
+            return None
+        turn_class = f"turn turn-{role}" if role in _CONVERSATION_ROLES else "turn"
+        blocks.append(
+            f'<div class="{turn_class}">'
+            f'<div class="role-label">{_h(role)}</div>'
+            f'<div class="turn-content">{_h(content)}</div>'
+            "</div>"
+        )
+    body = "".join(blocks)
+    # colspan must equal the findings-table column count: Severity, Rule ID, Probe,
+    # Message, Location = 5. If a column is added or removed, update this literal.
+    return (
+        '<tr class="conversation-row"><td colspan="5">'
+        f"<details open><summary>Conversation ({len(turns)} turns)</summary>"
+        f'<div class="conversation">{body}</div></details>'
+        "</td></tr>"
+    )
 
 
 def build_html_report(
@@ -137,6 +187,9 @@ def build_html_report(
                 f"<td>{_h(finding.message)}</td>"
                 f"<td>{_h(finding.target)}</td></tr>"
             )
+            conversation_row = _render_conversation(finding.evidence.get("turns"))
+            if conversation_row is not None:
+                parts.append(conversation_row)
         parts.append("</table>")
     elif execution_successful:
         parts.append('<p class="empty">No findings reported.</p>')
