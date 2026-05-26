@@ -13,7 +13,7 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from vectrava.core.http import post_with_retry
+from vectrava.core.http import post_no_retry, post_with_retry
 
 _URL = "https://example.test/v1/chat/completions"
 
@@ -262,3 +262,32 @@ def test_post_with_retry_per_client_state_independence() -> None:
         post_with_retry(client_b, _URL, json={"x": 1}, headers={}, timeout=5.0, min_delay_s=1.0)
         elapsed = time.monotonic() - start
     assert elapsed < 0.1
+
+
+def test_post_no_retry_returns_429_without_retry() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(429, text="too many requests")
+
+    with _client(handler) as client:
+        response = post_no_retry(client, _URL, json={"x": 1}, headers={}, timeout=5.0)
+
+    assert response.status_code == 429
+    assert len(calls) == 1
+
+
+def test_post_no_retry_returns_200_single_request() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler) as client:
+        response = post_no_retry(client, _URL, json={"x": 1}, headers={}, timeout=5.0)
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert len(calls) == 1

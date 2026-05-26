@@ -348,7 +348,9 @@ def scan_dow(
                 "Cap on outbound request rate per second. Default 10 "
                 "is well above typical LLM latency; lower this to be "
                 "gentler on a target, raise it for stress testing. "
-                "The cap applies across all probes within one scan."
+                "The cap applies across all probes within one scan, "
+                "except rate_limit_bypass, which deliberately overpaces "
+                "to test target-side rate-limit enforcement."
             ),
         ),
     ] = 10.0,

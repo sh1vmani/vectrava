@@ -22,6 +22,7 @@ from vectrava.core.registry import register
 from vectrava.dow.probes.error_amplification import ErrorAmplificationProbe
 from vectrava.dow.probes.model_substitution import ModelSubstitutionProbe
 from vectrava.dow.probes.output_padding import OutputPaddingProbe
+from vectrava.dow.probes.rate_limit_bypass import RateLimitBypassProbe
 from vectrava.dow.probes.token_amplification import TokenAmplificationProbe
 
 if TYPE_CHECKING:
@@ -38,6 +39,7 @@ def _registry() -> Iterator[None]:
     register(OutputPaddingProbe)
     register(ModelSubstitutionProbe)
     register(ErrorAmplificationProbe)
+    register(RateLimitBypassProbe)
     yield
     registry.clear()
 
@@ -138,6 +140,29 @@ def test_findings_scan_emits_results_sarif(
     )
     assert run["invocations"][0]["executionSuccessful"] is True
     assert run["invocations"][0]["exitCode"] == 1
+
+
+def test_rate_limit_bypass_succeeds_emits_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # Every burst request served with 200 and no 429: rate limit absent.
+        return httpx.Response(200, json={"ok": True})
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="rate_limit_bypass")
+
+    assert result.exit_code == 1
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert len(run["results"]) >= 1
+    rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
+    assert "rate_limit_bypass" in rule_ids
+    assert all(r["ruleId"] == "rate_limit_bypass" for r in run["results"])
 
 
 def test_probe_failure_emits_invocation_unsuccessful_sarif(

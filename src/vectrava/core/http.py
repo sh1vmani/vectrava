@@ -1,11 +1,17 @@
-"""Synchronous HTTP POST with retry and backoff.
+"""Synchronous HTTP POST helpers.
 
 `post_with_retry` wraps a single httpx POST in a tenacity retry policy: it retries
 transport errors, timeouts, and a fixed set of retryable status codes (429 and
 the transient 5xx family), honoring a Retry-After header when present and falling
 back to exponential backoff with jitter otherwise. Retries exhausted on a status
 return the last response; retries exhausted on an exception re-raise it. The
-caller decides how to translate either outcome.
+caller decides how to translate either outcome. This is the default path for
+probes that issue benign requests and want resilience against transient failures.
+
+`post_no_retry` is the opposite: a single un-wrapped POST with no tenacity, no
+pacing, and no special handling of any status. Use it when the status code is
+itself the signal and a retry would mask it, for example the rate_limit_bypass
+probe, which must observe a target's HTTP 429 rather than retry past it.
 """
 
 from __future__ import annotations
@@ -148,3 +154,36 @@ def post_with_retry(
     )
     result: httpx.Response = retrying(_do_post)
     return result
+
+
+def post_no_retry(
+    client: httpx.Client,
+    url: str,
+    *,
+    json: Mapping[str, object],
+    headers: Mapping[str, str],
+    timeout: float,
+) -> httpx.Response:
+    """POST once with no retry, no pacing, and no status handling.
+
+    A single pass-through `client.post`. The response is returned regardless of
+    status code; a 429 or 5xx is not retried and does not raise. Transport errors
+    and timeouts propagate as the underlying httpx exceptions, leaving translation
+    to the caller. Use this when the status code is the signal and a retry would
+    mask it; use post_with_retry for resilient benign requests.
+
+    Args:
+        client: Synchronous HTTP client.
+        url: POST URL.
+        json: Request body serialized as JSON.
+        headers: Request headers.
+        timeout: Per-request timeout in seconds.
+
+    Returns:
+        The httpx.Response, at whatever status the target returned.
+
+    Raises:
+        httpx.TransportError: if the request could not be completed.
+        httpx.TimeoutException: if the request timed out.
+    """
+    return client.post(url, json=json, headers=headers, timeout=timeout)

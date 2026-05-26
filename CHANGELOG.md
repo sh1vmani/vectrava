@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (indirect prompt injection probes), and `rag` (retrieval-augmented generation
   boundary probes).
 - `dow` probes: `token_amplification`, `output_padding`, `model_substitution`,
-  and `error_amplification`.
+  `error_amplification`, and `rate_limit_bypass`.
 - `ipi` probes: `direct_override`, `exfiltration_attempt`, `refusal_bypass`,
   `multi_turn_persistence`, and `multi_turn_refusal_erosion`.
 - `rag` probes: `cross_document_injection`, `citation_hijack`, and
