@@ -22,6 +22,7 @@ from vectrava.core import registry
 from vectrava.core.registry import register
 from vectrava.ipi.probes.direct_override import DirectOverrideProbe
 from vectrava.ipi.probes.exfiltration_attempt import ExfiltrationAttemptProbe
+from vectrava.ipi.probes.multi_turn_persistence import MultiTurnPersistenceProbe
 from vectrava.ipi.probes.refusal_bypass import RefusalBypassProbe
 
 if TYPE_CHECKING:
@@ -39,6 +40,7 @@ def _registry() -> Iterator[None]:
     register(DirectOverrideProbe)
     register(ExfiltrationAttemptProbe)
     register(RefusalBypassProbe)
+    register(MultiTurnPersistenceProbe)
     yield
     registry.clear()
 
@@ -232,6 +234,39 @@ def test_exfiltration_probe_failure_emits_unsuccessful(
     assert run["results"] == []
     assert run["invocations"][0]["executionSuccessful"] is False
     assert run["invocations"][0]["exitCode"] == 2
+
+
+def test_multi_turn_persistence_succeeds_emits_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        messages = body["messages"]
+        # Turn 1 plants the canary in messages[0]; it stays first all conversation.
+        match = _HEX16.search(messages[0]["content"])
+        token = match.group(0) if match else ""
+        turn_index = (len(messages) + 1) // 2
+        # Leak only after the turn-1 acknowledgement, so detection counts it.
+        content = f"CANARY: {token}" if turn_index >= 2 else "Understood."
+        return httpx.Response(
+            200,
+            json={"model": "gpt-4o-mini", "choices": [{"message": {"content": content}}]},
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="multi_turn_persistence")
+
+    assert result.exit_code == 1
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert len(run["results"]) >= 1
+    rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
+    assert "multi_turn_persistence" in rule_ids
+    assert all(r["ruleId"] == "multi_turn_persistence" for r in run["results"])
 
 
 def test_refusal_bypass_clean_scan_emits_zero_findings(

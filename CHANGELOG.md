@@ -14,7 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   boundary probes).
 - `dow` probes: `token_amplification`, `output_padding`, `model_substitution`,
   and `error_amplification`.
-- `ipi` probes: `direct_override`, `exfiltration_attempt`, and `refusal_bypass`.
+- `ipi` probes: `direct_override`, `exfiltration_attempt`, `refusal_bypass`, and
+  `multi_turn_persistence`.
 - `rag` probes: `cross_document_injection`, `citation_hijack`, and
   `cross_source_contradiction`.
 - Ed25519-signed scope-file authorization gate. Every scan refuses to run until
@@ -36,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--format`, and `--max-requests-per-second`.
 - `dow`-specific tuning flags `--threshold` and `--padding-threshold`.
 - `rag`-specific flag `--num-sources` for retrieval-distractor testing.
+- `ipi`-specific flag `--max-turns` controlling the `multi_turn_persistence`
+  probe's conversation length (default 5, capped at 10).
 - Per-client rate limiting in the HTTP layer, configured by
   `--max-requests-per-second`.
 - `examples/scope.example.json` template and accompanying `examples/README.md`

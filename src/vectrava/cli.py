@@ -425,6 +425,18 @@ def scan_ipi(
             help="Model identifier sent in the chat-completions request body (e.g. gpt-4o-mini).",
         ),
     ] = "gpt-4o-mini",
+    max_turns: Annotated[
+        int,
+        typer.Option(
+            "--max-turns",
+            min=2,
+            help=(
+                "Conversation length for the multi_turn_persistence probe. Default 5, "
+                "capped at 10. Turn 1 plants a persistence directive; later turns test "
+                "whether the injected canary leaks into subsequent replies."
+            ),
+        ),
+    ] = 5,
     max_requests_per_second: Annotated[
         float,
         typer.Option(
@@ -440,7 +452,11 @@ def scan_ipi(
     ] = 10.0,
 ) -> None:
     """Run Indirect Prompt Injection probes against TARGET."""
-    options: dict[str, JsonValue] = {"model": model, "max_rps": max_requests_per_second}
+    options: dict[str, JsonValue] = {
+        "model": model,
+        "max_turns": max_turns,
+        "max_rps": max_requests_per_second,
+    }
     _run_scan(
         "ipi",
         scope=scope,
