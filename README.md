@@ -76,7 +76,9 @@ base64url public keys; the gate trusts nothing by default.
 export VECTRAVA_TRUSTED_KEYS="$(cat ./vectrava_ed25519.pub)"
 ```
 
-Write a scope file naming the authorized targets and a deadline.
+Copy the template under [`examples/scope.example.json`](examples/scope.example.json)
+and edit it: set `targets` to URLs in your authorized scope and
+`authorized_until` to a future timestamp. The shape is:
 
 ```json
 {
