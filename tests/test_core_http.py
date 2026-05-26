@@ -228,14 +228,31 @@ def test_post_with_retry_no_pacing_when_min_delay_zero() -> None:
     assert elapsed < 0.05
 
 
-def test_post_with_retry_paces_requests_when_min_delay_positive() -> None:
+def test_post_with_retry_paces_requests_when_min_delay_positive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pacing gate requests the correct sleep duration when called within the cap.
+
+    Deterministic monkeypatch-time.sleep test, not wall-clock measurement. The
+    pacing gate's correctness is "did it compute and request the right sleep
+    duration"; we assert that directly rather than measuring wall-clock elapsed
+    time, which is sensitive to OS timer granularity (Windows monotonic clock has
+    ~15.6ms resolution and can measure a 0.1s sleep as 0.093s, breaking a >= 0.1
+    wall-clock assertion).
+    """
+    sleeps: list[float] = []
+    monkeypatch.setattr(
+        "vectrava.core.http.time.sleep",
+        lambda duration: sleeps.append(duration),
+    )
     with _client(_ok) as client:
-        start = time.monotonic()
         post_with_retry(client, _URL, json={"x": 1}, headers={}, timeout=5.0, min_delay_s=0.1)
         post_with_retry(client, _URL, json={"x": 1}, headers={}, timeout=5.0, min_delay_s=0.1)
-        elapsed = time.monotonic() - start
-    assert elapsed >= 0.1
-    assert elapsed < 0.5
+    # First call: no prior request on this client, so no sleep.
+    # Second call: pacing gate subtracts the microsecond-scale elapsed time
+    # between calls and sleeps for the remainder, which is effectively min_delay_s.
+    assert len(sleeps) == 1
+    assert 0.099 <= sleeps[0] <= 0.1
 
 
 def test_post_with_retry_per_client_state_independence() -> None:
