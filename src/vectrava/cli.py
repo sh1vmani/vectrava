@@ -271,6 +271,10 @@ def _run_scan(
             audit.set_outcome("dry_run", 0)
             raise typer.Exit(code=0)
 
+        # Two-tier cost display: always echo the estimate so operators see what a
+        # scan will cost; the threshold prompt below is the confirmation tier only.
+        typer.echo(f"Estimated cost: {total_tokens:,} tokens (~${cost:.2f}, placeholder rate)")
+
         if total_tokens > COST_PROMPT_THRESHOLD_TOKENS and not yes:
             proceed = typer.confirm(
                 f"This scan will consume up to {total_tokens} tokens "

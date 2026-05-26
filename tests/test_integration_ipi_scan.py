@@ -383,3 +383,24 @@ def test_refusal_bypass_probe_failure_emits_unsuccessful(
     assert run["results"] == []
     assert run["invocations"][0]["executionSuccessful"] is False
     assert run["invocations"][0]["exitCode"] == 2
+
+
+def test_cost_info_line_prints_for_ipi_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    # The two-tier cost line is emitted in the shared _run_scan, so it appears for
+    # ipi scans identically to dow; direct_override (900 tokens) is below threshold.
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"model": "gpt-4o-mini", "choices": [{"message": {"content": "benign"}}]},
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="direct_override")
+
+    assert result.exit_code == 0
+    assert "Estimated cost: 900 tokens (~$0.01, placeholder rate)" in result.stdout

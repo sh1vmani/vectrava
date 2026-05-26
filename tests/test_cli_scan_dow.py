@@ -413,3 +413,141 @@ def test_audit_log_env_var_used_when_flag_absent(
     assert result.exit_code == 0
     assert len(_audit_lines(flag_audit)) == 1
     assert len(_audit_lines(env_audit)) == 1  # unchanged: env did not receive the second record
+
+
+def test_cost_info_line_prints_below_threshold(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_make_dow_probe("amp", tokens=2000))  # well below the 150k threshold
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    # No --yes and no input: the prompt must NOT fire below threshold (an unexpected
+    # prompt would hang the runner), so the scan completes cleanly.
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    text = _combined(result)
+    assert "Estimated cost: 2,000 tokens" in text
+    assert "(~$0.02, placeholder rate)" in text
+
+
+def test_cost_info_line_prints_above_threshold_then_confirm(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_make_dow_probe("big", tokens=200_000))  # above the 150k threshold
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+        input="y\n",
+    )
+    text = _combined(result)
+    assert "Estimated cost: 200,000 tokens" in text
+    assert "(~$2.00, placeholder rate)" in text
+    # The prompt's wording is unchanged and does not use thousands-separators.
+    assert "This scan will consume up to 200000 tokens" in text
+    assert result.exit_code in (0, 1)  # confirmed; 0 (no findings) here
+    assert "aborted" not in text
+
+
+def test_cost_info_line_does_not_print_in_dry_run_path(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_make_dow_probe("amp", tokens=2000))
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    result = runner.invoke(
+        app,
+        ["scan", "dow", "--scope", str(scope), "--target", "http://allowed", "--dry-run"],
+    )
+    assert result.exit_code == 0
+    text = _combined(result)
+    assert "dry run:" in text  # the existing dry-run line still prints
+    assert "Estimated cost:" not in text  # the info line does not print on the dry-run path
+
+
+def test_cost_info_line_format_matches_dry_run_numbers(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    # Dry-run output is frozen by deliberate design; the info line uses
+    # thousands-separators for legibility at high token counts. Both paths agree on
+    # the numbers (2000 tokens, $0.02); only the formatting differs.
+    registry.register(_make_dow_probe("amp", tokens=2000))
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    actual = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    actual_text = _combined(actual)
+    assert "2,000" in actual_text  # info line: comma-separated
+    assert "0.02" in actual_text
+
+    dry = runner.invoke(
+        app,
+        ["scan", "dow", "--scope", str(scope), "--target", "http://allowed", "--dry-run"],
+    )
+    dry_text = _combined(dry)
+    assert "2000" in dry_text  # dry-run line: no comma, frozen format
+    assert "0.02" in dry_text
+
+
+def test_cost_info_line_is_not_colored(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    # CliRunner strips color by default (not a TTY), so this mainly guards against
+    # an accidental secho(fg=...) on the cost-gate path; still worth pinning.
+    registry.register(_make_dow_probe("amp", tokens=2000))
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert "\x1b[" not in _combined(result)

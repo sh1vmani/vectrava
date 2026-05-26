@@ -68,6 +68,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Scan commands now print the estimated token count and USD cost on every
+  actual-scan invocation, not only when the threshold prompt fires. The
+  confirmation prompt above 150,000 tokens is unchanged. Dry-run output is
+  unchanged. The USD figure remains a placeholder estimate at $0.01/1K tokens;
+  reading per-model pricing from config is a planned enhancement.
 - `AuditWriter` now serializes concurrent flushes to one audit log path via an
   OS file lock (`fcntl.flock` on Linux and macOS, `msvcrt.locking` on Windows),
   enforcing at the OS level the single-writer-per-path invariant the hash chain
