@@ -193,3 +193,65 @@ def test_padding_threshold_below_one_rejected() -> None:
     # narrow CI tty and may not contain the flag name.
     assert result.exit_code == 2
     assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_max_requests_per_second_default_reaches_probe(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    assert len(_captured_options) == 1
+    assert _captured_options[0]["max_rps"] == 10.0
+
+
+def test_max_requests_per_second_custom_reaches_probe(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--max-requests-per-second",
+            "5.0",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    assert _captured_options[0]["max_rps"] == 5.0
+
+
+def test_max_requests_per_second_below_one_rejected() -> None:
+    result = runner.invoke(app, ["scan", "dow", "--max-requests-per-second", "0.5"])
+    # Mirror test_padding_threshold_below_one_rejected: Typer's FloatRange
+    # rejection exits 2 via SystemExit. Assert the structural signal rather
+    # than substring-matching the width-truncated Rich error panel.
+    assert result.exit_code == 2
+    assert result.exception is None or isinstance(result.exception, SystemExit)

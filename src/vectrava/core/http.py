@@ -10,6 +10,8 @@ caller decides how to translate either outcome.
 
 from __future__ import annotations
 
+import time
+import weakref
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import TYPE_CHECKING
@@ -30,6 +32,12 @@ if TYPE_CHECKING:
     from tenacity import RetryCallState
 
 _RETRYABLE_STATUSES = frozenset({429, 500, 502, 503, 504})
+
+# Per-client last-request timestamp tracking for rate limiting.
+# Keyed on the httpx.Client so each scan's pacing budget is isolated;
+# WeakKeyDictionary lets state evaporate when the client goes out
+# of scope, avoiding any cross-scan leakage.
+_LAST_REQUEST_TIME: weakref.WeakKeyDictionary[httpx.Client, float] = weakref.WeakKeyDictionary()
 
 
 def _parse_retry_after(value: str | None) -> float | None:
@@ -60,6 +68,7 @@ def post_with_retry(
     max_attempts: int = 3,
     wait_initial_s: float = 1.0,
     wait_max_s: float = 30.0,
+    min_delay_s: float = 0.0,
 ) -> httpx.Response:
     """POST with retry on transport errors, timeouts, and retryable statuses.
 
@@ -78,6 +87,10 @@ def post_with_retry(
         max_attempts: Total attempts before giving up.
         wait_initial_s: Initial backoff for the exponential-jitter fallback.
         wait_max_s: Maximum backoff, and the cap applied to a Retry-After value.
+        min_delay_s: Minimum seconds between consecutive requests on the same
+            client, including retries. Enforces a rate cap by sleeping before a
+            request when the previous one was too recent. The default 0.0 means
+            no pacing, preserving the prior behavior for callers that omit it.
 
     Returns:
         The final httpx.Response.
@@ -87,6 +100,13 @@ def post_with_retry(
     """
 
     def _do_post() -> httpx.Response:
+        if min_delay_s > 0.0:
+            last = _LAST_REQUEST_TIME.get(client, 0.0)
+            now = time.monotonic()
+            elapsed = now - last
+            if elapsed < min_delay_s:
+                time.sleep(min_delay_s - elapsed)
+            _LAST_REQUEST_TIME[client] = time.monotonic()
         return client.post(url, json=json, headers=headers, timeout=timeout)
 
     def _is_retryable_status(response: httpx.Response) -> bool:

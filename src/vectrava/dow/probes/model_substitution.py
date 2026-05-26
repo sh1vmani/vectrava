@@ -58,6 +58,12 @@ class ModelSubstitutionProbe(Probe):
             )
         model = raw_model
 
+        raw_max_rps = ctx.options.get("max_rps")
+        if isinstance(raw_max_rps, (int, float)) and raw_max_rps > 0:
+            min_delay_s = 1.0 / float(raw_max_rps)
+        else:
+            min_delay_s = 0.0
+
         endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
         url = ctx.target.rstrip("/") + endpoint_path
 
@@ -68,6 +74,7 @@ class ModelSubstitutionProbe(Probe):
             model=model,
             prompt=PROBE_PROMPT,
             max_tokens=PROBE_MAX_TOKENS,
+            min_delay_s=min_delay_s,
         )
         reported = result.model
         matched = reported is not None and reported == model

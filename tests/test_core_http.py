@@ -7,6 +7,7 @@ monkeypatched time.sleep.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 
 import httpx
@@ -212,3 +213,35 @@ def test_exhausted_retries_on_timeout_raises_last_exception() -> None:
     with _client(handler) as client, pytest.raises(httpx.TimeoutException):
         _post(client)
     assert len(calls) == 3
+
+
+def _ok(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(200, json={})
+
+
+def test_post_with_retry_no_pacing_when_min_delay_zero() -> None:
+    with _client(_ok) as client:
+        start = time.monotonic()
+        post_with_retry(client, _URL, json={"x": 1}, headers={}, timeout=5.0, min_delay_s=0.0)
+        post_with_retry(client, _URL, json={"x": 1}, headers={}, timeout=5.0, min_delay_s=0.0)
+        elapsed = time.monotonic() - start
+    assert elapsed < 0.05
+
+
+def test_post_with_retry_paces_requests_when_min_delay_positive() -> None:
+    with _client(_ok) as client:
+        start = time.monotonic()
+        post_with_retry(client, _URL, json={"x": 1}, headers={}, timeout=5.0, min_delay_s=0.1)
+        post_with_retry(client, _URL, json={"x": 1}, headers={}, timeout=5.0, min_delay_s=0.1)
+        elapsed = time.monotonic() - start
+    assert elapsed >= 0.1
+    assert elapsed < 0.5
+
+
+def test_post_with_retry_per_client_state_independence() -> None:
+    with _client(_ok) as client_a, _client(_ok) as client_b:
+        post_with_retry(client_a, _URL, json={"x": 1}, headers={}, timeout=5.0, min_delay_s=1.0)
+        start = time.monotonic()
+        post_with_retry(client_b, _URL, json={"x": 1}, headers={}, timeout=5.0, min_delay_s=1.0)
+        elapsed = time.monotonic() - start
+    assert elapsed < 0.1

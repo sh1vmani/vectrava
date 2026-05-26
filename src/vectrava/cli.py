@@ -334,12 +334,26 @@ def scan_dow(
             help="Model identifier sent in the chat-completions request body (e.g. gpt-4o-mini).",
         ),
     ] = "gpt-4o-mini",
+    max_requests_per_second: Annotated[
+        float,
+        typer.Option(
+            "--max-requests-per-second",
+            min=1.0,
+            help=(
+                "Cap on outbound request rate per second. Default 10 "
+                "is well above typical LLM latency; lower this to be "
+                "gentler on a target, raise it for stress testing. "
+                "The cap applies across all probes within one scan."
+            ),
+        ),
+    ] = 10.0,
 ) -> None:
     """Run Denial-of-Wallet (dow) probes against an authorized target."""
     options: dict[str, JsonValue] = {
         "threshold": threshold,
         "padding_threshold": padding_threshold,
         "model": model,
+        "max_rps": max_requests_per_second,
     }
     _run_scan(
         "dow",
@@ -406,9 +420,22 @@ def scan_ipi(
             help="Model identifier sent in the chat-completions request body (e.g. gpt-4o-mini).",
         ),
     ] = "gpt-4o-mini",
+    max_requests_per_second: Annotated[
+        float,
+        typer.Option(
+            "--max-requests-per-second",
+            min=1.0,
+            help=(
+                "Cap on outbound request rate per second. Default 10 "
+                "is well above typical LLM latency; lower this to be "
+                "gentler on a target, raise it for stress testing. "
+                "The cap applies across all probes within one scan."
+            ),
+        ),
+    ] = 10.0,
 ) -> None:
     """Run Indirect Prompt Injection probes against TARGET."""
-    options: dict[str, JsonValue] = {"model": model}
+    options: dict[str, JsonValue] = {"model": model, "max_rps": max_requests_per_second}
     _run_scan(
         "ipi",
         scope=scope,
@@ -487,9 +514,26 @@ def scan_rag(
             ),
         ),
     ] = 3,
+    max_requests_per_second: Annotated[
+        float,
+        typer.Option(
+            "--max-requests-per-second",
+            min=1.0,
+            help=(
+                "Cap on outbound request rate per second. Default 10 "
+                "is well above typical LLM latency; lower this to be "
+                "gentler on a target, raise it for stress testing. "
+                "The cap applies across all probes within one scan."
+            ),
+        ),
+    ] = 10.0,
 ) -> None:
     """Run RAG pipeline boundary probes against TARGET."""
-    options: dict[str, JsonValue] = {"model": model, "num_sources": num_sources}
+    options: dict[str, JsonValue] = {
+        "model": model,
+        "num_sources": num_sources,
+        "max_rps": max_requests_per_second,
+    }
     _run_scan(
         "rag",
         scope=scope,

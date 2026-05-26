@@ -52,6 +52,7 @@ def call_completion(
     prompt: str,
     max_tokens: int,
     timeout_s: float = 60.0,
+    min_delay_s: float = 0.0,
 ) -> CompletionResult:
     """Send one benign prompt to an OpenAI-compatible chat endpoint.
 
@@ -69,6 +70,8 @@ def call_completion(
         prompt: The single user prompt to send.
         max_tokens: Output cap requested from the target.
         timeout_s: Per-request timeout in seconds.
+        min_delay_s: Minimum seconds between consecutive requests on the same
+            client, forwarded to post_with_retry for rate limiting.
 
     Returns:
         A CompletionResult with token usage, finish reason, latency, status,
@@ -95,6 +98,7 @@ def call_completion(
             max_attempts=_RETRY_MAX_ATTEMPTS,
             wait_initial_s=_RETRY_WAIT_INITIAL_S,
             wait_max_s=_RETRY_WAIT_MAX_S,
+            min_delay_s=min_delay_s,
         )
     except httpx.TimeoutException as exc:
         raise ProbeError(

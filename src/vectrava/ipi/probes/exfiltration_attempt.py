@@ -90,6 +90,11 @@ class ExfiltrationAttemptProbe(Probe):
 
         raw_model = ctx.options.get("model")
         model = raw_model if isinstance(raw_model, str) else "gpt-4o-mini"
+        raw_max_rps = ctx.options.get("max_rps")
+        if isinstance(raw_max_rps, (int, float)) and raw_max_rps > 0:
+            min_delay_s = 1.0 / float(raw_max_rps)
+        else:
+            min_delay_s = 0.0
 
         endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
         url = ctx.target.rstrip("/") + endpoint_path
@@ -116,6 +121,7 @@ class ExfiltrationAttemptProbe(Probe):
                 json=payload,
                 headers=headers,
                 timeout=60.0,
+                min_delay_s=min_delay_s,
             )
             if response.status_code >= 400:
                 raise ProbeError(

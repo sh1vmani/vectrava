@@ -78,6 +78,12 @@ class TokenAmplificationProbe(Probe):
             )
         model = raw_model
 
+        raw_max_rps = ctx.options.get("max_rps")
+        if isinstance(raw_max_rps, (int, float)) and raw_max_rps > 0:
+            min_delay_s = 1.0 / float(raw_max_rps)
+        else:
+            min_delay_s = 0.0
+
         endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
         url = ctx.target.rstrip("/") + endpoint_path
 
@@ -90,6 +96,7 @@ class TokenAmplificationProbe(Probe):
                 model=model,
                 prompt=prompt,
                 max_tokens=PROBE_MAX_TOKENS,
+                min_delay_s=min_delay_s,
             )
             ratio = result.usage.completion_tokens / max(result.usage.prompt_tokens, 1)
             if ratio < threshold:
