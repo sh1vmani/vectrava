@@ -128,6 +128,27 @@ key whose public half is listed in `VECTRAVA_TRUSTED_KEYS`. Scans against
 unsigned, expired, or untrusted-key-signed scopes are refused before any network
 call is made.
 
+## Audit log
+
+For regulated environments, every scan invocation can be recorded to a local
+JSONL audit log. It is opt-in: pass `--audit-log <path>` to a `scan` command, or
+set `VECTRAVA_AUDIT_LOG_PATH` for the session (the flag wins over the env var). A
+scan without either configured behaves exactly as before.
+
+One JSON object is appended per invocation, recording the outcome of both
+successful and refused scans (a refusal because of an expired scope is itself
+evidence). Each record carries an invocation id, start and end times, the
+outcome, the scanned target, the scope signer and authorization deadline, a
+finding-severity summary, and runner host/user. Credentials are never recorded:
+only a SHA-256 fingerprint of the credential and the environment-variable name
+appear. If the audit path is configured but not writable, the scan refuses to run
+before any network call (fail-closed). Parent directories are created as needed.
+
+A single writer per audit-log path is assumed; run concurrent scans against
+distinct paths or front them with a log shipper. Tamper-evidence (signing or hash
+chaining of records) is left to the operator's log-shipping and filesystem
+controls.
+
 ## BYOK
 
 Target credentials are read from an environment variable named by

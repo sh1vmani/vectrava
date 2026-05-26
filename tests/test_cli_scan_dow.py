@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import contextlib
+import json
 from collections.abc import Callable, Iterator, Mapping
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -255,3 +257,159 @@ def test_max_requests_per_second_below_one_rejected() -> None:
     # than substring-matching the width-truncated Rich error panel.
     assert result.exit_code == 2
     assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def _audit_lines(path: Path) -> list[str]:
+    return path.read_text(encoding="utf-8").splitlines()
+
+
+def test_audit_log_records_completed_scan(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    audit = tmp_path / "audit.jsonl"
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+            "--audit-log",
+            str(audit),
+        ],
+    )
+    assert result.exit_code == 0
+    lines = _audit_lines(audit)
+    assert len(lines) == 1
+    record: Any = json.loads(lines[0])
+    assert record["outcome"] == "completed_clean"
+    assert record["module"] == "dow"
+    assert record["target"] == "http://allowed"
+    assert record["scope_signer_public_key"] is not None
+    assert record["findings_summary"]["total"] == 0
+    assert record["output_file_sha256"] is not None
+    assert record["vectrava_version"] is not None
+
+
+def test_audit_log_preflight_unwritable_path_exits_2(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    # A file where a directory is needed makes the audit parent un-creatable.
+    blocker = tmp_path / "blocker"
+    blocker.write_text("x", encoding="utf-8")
+    bad_audit = blocker / "sub" / "audit.jsonl"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--audit-log",
+            str(bad_audit),
+        ],
+    )
+    assert result.exit_code == 2
+    assert "audit" in _combined(result).lower()
+
+
+def test_audit_log_dry_run_records_outcome(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_make_dow_probe("amp", tokens=100))
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    audit = tmp_path / "audit.jsonl"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--dry-run",
+            "--audit-log",
+            str(audit),
+        ],
+    )
+    assert result.exit_code == 0
+    record: Any = json.loads(_audit_lines(audit)[0])
+    assert record["outcome"] == "dry_run"
+    assert record["exit_code"] == 0
+
+
+def test_audit_log_auth_rejected_records_signer(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    scope = signed_scope_factory(
+        tmp_path,
+        targets=["https://example.test"],
+        authorized_until=datetime.now(UTC) - timedelta(days=1),
+    )
+    audit = tmp_path / "audit.jsonl"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "https://example.test",
+            "--audit-log",
+            str(audit),
+        ],
+    )
+    assert result.exit_code == 2
+    record: Any = json.loads(_audit_lines(audit)[0])
+    assert record["outcome"] == "authorization_rejected"
+    assert record["scope_signer_public_key"] is not None
+    assert record["scope_authorized_until"] is not None
+
+
+def test_audit_log_env_var_used_when_flag_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    env_audit = tmp_path / "env_audit.jsonl"
+    monkeypatch.setenv("VECTRAVA_AUDIT_LOG_PATH", str(env_audit))
+
+    base = [
+        "scan",
+        "dow",
+        "--scope",
+        str(scope),
+        "--target",
+        "http://allowed",
+        "--format",
+        "json",
+        "--output",
+        str(out),
+    ]
+    # No --audit-log flag: the env var path is used.
+    result = runner.invoke(app, base)
+    assert result.exit_code == 0
+    assert len(_audit_lines(env_audit)) == 1
+
+    # Flag present: it wins, and the env path is not written again.
+    flag_audit = tmp_path / "flag_audit.jsonl"
+    result = runner.invoke(app, [*base, "--audit-log", str(flag_audit)])
+    assert result.exit_code == 0
+    assert len(_audit_lines(flag_audit)) == 1
+    assert len(_audit_lines(env_audit)) == 1  # unchanged: env did not receive the second record

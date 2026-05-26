@@ -19,7 +19,23 @@ from vectrava.core.signing import trusted_public_keys, verify_scope
 
 
 class AuthorizationError(Exception):
-    """Raised when scan authorization is missing, malformed, or expired."""
+    """Raised when scan authorization is missing, malformed, or expired.
+
+    When the scope file parsed far enough to recover its contents (it was
+    unsigned, signed by an untrusted key, or expired), the parsed `ScopeFile` is
+    attached as `scope` so an audit record can name the claimed signer and
+    authorization window. For a missing or malformed file, `scope` is None.
+    """
+
+    def __init__(self, message: str, *, scope: ScopeFile | None = None) -> None:
+        """Build the error, optionally carrying the parsed scope for audit.
+
+        Args:
+            message: Human readable description of the refusal.
+            scope: The parsed scope file, when it was recovered before refusal.
+        """
+        super().__init__(message)
+        self.scope = scope
 
 
 class AuthorizationGate:
@@ -60,14 +76,14 @@ class AuthorizationGate:
                 "scope file is not signed; sign with vtra scope sign or set "
                 "VECTRAVA_TRUSTED_KEYS for the signing key"
             )
-            raise AuthorizationError(msg)
+            raise AuthorizationError(msg, scope=scope)
 
         if scope.public_key not in trusted_public_keys():
             msg = (
                 "scope signed by an untrusted key; add the key to "
                 "VECTRAVA_TRUSTED_KEYS or sign with a trusted key"
             )
-            raise AuthorizationError(msg)
+            raise AuthorizationError(msg, scope=scope)
 
         try:
             verify_scope(scope)
@@ -80,6 +96,6 @@ class AuthorizationGate:
             deadline = deadline.replace(tzinfo=UTC)
         if deadline < datetime.now(UTC):
             msg = f"scope authorization expired at {deadline.isoformat()}"
-            raise AuthorizationError(msg)
+            raise AuthorizationError(msg, scope=scope)
 
         return scope

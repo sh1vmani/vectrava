@@ -43,6 +43,13 @@ code:
 - **Bring your own key (BYOK).** vectrava does not ship or store credentials.
   The target API key is supplied by the operator through the environment.
 
+The optional audit log (`--audit-log` / `VECTRAVA_AUDIT_LOG_PATH`) never records a
+credential value. It records the credential's environment-variable name and a
+SHA-256 fingerprint (truncated) so an auditor can correlate which key was used
+without the secret appearing in the log. The scope signature is likewise reduced
+to a fingerprint, never stored verbatim. The audit log is operator-side evidence
+of authorized use; it is never transmitted to the target.
+
 Run vectrava only against systems you own or are explicitly authorized to test.
 Using it against systems without authorization is outside the project's intended
 use and may be illegal.

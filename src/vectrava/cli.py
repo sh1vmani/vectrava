@@ -9,8 +9,12 @@ anything. Probe discovery and cost estimation happen before any API call, so
 from __future__ import annotations
 
 import contextlib
+import getpass
 import importlib
+import os
+import socket
 import sys
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -19,8 +23,10 @@ import httpx
 import structlog
 import typer
 
+from vectrava import __version__
 from vectrava.config.byok import BYOKConfig
 from vectrava.core import registry
+from vectrava.core.audit import AuditError, AuditWriter
 from vectrava.core.auth_gate import AuthorizationError, AuthorizationGate
 from vectrava.core.probe import Probe, ProbeContext, ProbeError
 from vectrava.core.result import Finding
@@ -172,103 +178,162 @@ def _run_scan(
     output: Path | None,
     output_format: str,
     options: Mapping[str, JsonValue],
+    audit_log: Path | None,
 ) -> None:
-    """Drive a scan for one module: discover, authorize, estimate, run, emit."""
+    """Drive a scan for one module: discover, authorize, estimate, run, emit.
+
+    When audit_log is set, one JSONL record is written for the invocation
+    regardless of outcome. The record is flushed in a finally block, so a refused
+    or errored scan is recorded too. A --list invocation is pure introspection and
+    is not audited.
+    """
     started_at = datetime.now(UTC)
     _load_module_probes(module)
     module_probes = registry.by_module(module)
 
-    # Listing is pure introspection: no scope, no auth, no target contact.
+    # Listing is pure introspection: no scope, no auth, no target contact, no audit.
     if list_probes:
         _print_probe_list(module, module_probes)
         raise typer.Exit(code=0)
 
-    if output_format not in VALID_FORMATS:
-        choices = ", ".join(VALID_FORMATS)
-        raise _fail(f"error: unknown format {output_format!r}. Choose from: {choices}")
+    audit = AuditWriter(audit_log)
+    try:
+        audit.preflight()
+    except AuditError as exc:
+        # Fail closed before any target contact: a dead audit path means no scan.
+        raise _fail(f"audit log preflight failed: {exc}") from exc
 
-    if scope is None or target is None:
-        raise _fail("error: --scope and --target are required for a scan run")
+    audit.set_invocation(
+        invocation_id=uuid.uuid4().hex,
+        started_at=started_at,
+        module=module,
+        arguments=sys.argv[1:],
+        runner_host=socket.gethostname(),
+        runner_user=getpass.getuser(),
+        runner_pid=os.getpid(),
+        vectrava_version=__version__,
+    )
 
     try:
-        scope_file = AuthorizationGate(scope).check()
-    except AuthorizationError as exc:
-        raise _fail(f"authorization refused: {exc}") from exc
+        if output_format not in VALID_FORMATS:
+            choices = ", ".join(VALID_FORMATS)
+            audit.set_outcome("invalid_arguments", 2)
+            raise _fail(f"error: unknown format {output_format!r}. Choose from: {choices}")
 
-    if target not in scope_file.targets:
-        authorized = ", ".join(scope_file.targets) or "(none)"
-        raise _fail(
-            f"error: target {target!r} is not authorized by the scope file. "
-            f"Authorized targets: {authorized}"
-        )
+        if scope is None or target is None:
+            audit.set_outcome("invalid_arguments", 2)
+            raise _fail("error: --scope and --target are required for a scan run")
 
-    selected = _select_probes(module_probes, only)
+        try:
+            scope_file = AuthorizationGate(scope).check()
+        except AuthorizationError as exc:
+            audit.set_scope_rejected(exc.scope)
+            audit.set_outcome("authorization_rejected", 2)
+            raise _fail(f"authorization refused: {exc}") from exc
+        audit.set_scope(scope_file)
 
-    total_tokens = sum(probe.estimated_tokens_per_run for probe in selected)
-    cost = _estimated_cost_usd(total_tokens)
+        if target not in scope_file.targets:
+            authorized = ", ".join(scope_file.targets) or "(none)"
+            audit.set_outcome("target_not_in_scope", 2)
+            raise _fail(
+                f"error: target {target!r} is not authorized by the scope file. "
+                f"Authorized targets: {authorized}"
+            )
+        audit.set_target(target)
 
-    if dry_run:
-        typer.echo(
-            f"dry run: {len(selected)} probe(s), up to {total_tokens} tokens, "
-            f"estimated cost ${cost:.2f}. No API calls made."
-        )
-        raise typer.Exit(code=0)
+        try:
+            selected = _select_probes(module_probes, only)
+        except typer.Exit:
+            audit.set_outcome("invalid_arguments", 2)
+            raise
 
-    if total_tokens > COST_PROMPT_THRESHOLD_TOKENS and not yes:
-        proceed = typer.confirm(
-            f"This scan will consume up to {total_tokens} tokens "
-            f"(estimated cost ${cost:.2f}). Continue?"
-        )
-        if not proceed:
-            typer.echo("aborted")
+        total_tokens = sum(probe.estimated_tokens_per_run for probe in selected)
+        cost = _estimated_cost_usd(total_tokens)
+
+        if dry_run:
+            typer.echo(
+                f"dry run: {len(selected)} probe(s), up to {total_tokens} tokens, "
+                f"estimated cost ${cost:.2f}. No API calls made."
+            )
+            audit.set_outcome("dry_run", 0)
             raise typer.Exit(code=0)
 
-    credentials: str | None = None
-    if any(probe.requires_credentials for probe in selected):
-        if api_key_env is None:
-            raise _fail(
-                "error: --api-key-env is required because a selected probe needs credentials"
+        if total_tokens > COST_PROMPT_THRESHOLD_TOKENS and not yes:
+            proceed = typer.confirm(
+                f"This scan will consume up to {total_tokens} tokens "
+                f"(estimated cost ${cost:.2f}). Continue?"
             )
-        try:
-            credentials = BYOKConfig(api_key_env=api_key_env).resolve()
-        except ValueError as exc:
-            raise _fail(f"error: {exc}") from exc
+            if not proceed:
+                typer.echo("aborted")
+                audit.set_outcome("aborted_by_user", 0)
+                raise typer.Exit(code=0)
 
-    logger = structlog.get_logger()
-    findings: list[Finding] = []
-    scan_error = False
-    out_path = output if output is not None else DEFAULT_OUTPUT
-
-    with httpx.Client() as http:
-        for probe_cls in selected:
-            probe = probe_cls()
-            ctx = ProbeContext(
-                target=target,
-                endpoint=endpoint if endpoint is not None else probe.default_endpoint,
-                credentials=credentials if probe.requires_credentials else None,
-                scope=scope_file,
-                http=http,
-                logger=logger.bind(probe=probe.name),
-                options=options,
-            )
+        credentials: str | None = None
+        if any(probe.requires_credentials for probe in selected):
+            if api_key_env is None:
+                audit.set_outcome("credentials_missing", 2)
+                raise _fail(
+                    "error: --api-key-env is required because a selected probe needs credentials"
+                )
             try:
-                findings.extend(probe.run(ctx))
-            except ProbeError as exc:
-                scan_error = True
-                typer.secho(f"probe {probe.name!r} failed: {exc}", err=True, fg=typer.colors.YELLOW)
+                credentials = BYOKConfig(api_key_env=api_key_env).resolve()
+            except ValueError as exc:
+                audit.set_outcome("credentials_missing", 2)
+                raise _fail(f"error: {exc}") from exc
+            audit.set_credential(env_var=api_key_env, value=credentials)
 
-    exit_code = 2 if scan_error else (1 if findings else 0)
-    _emit_findings(
-        findings,
-        out_path,
-        output_format,
-        started_at=started_at,
-        target=target,
-        execution_successful=not scan_error,
-        exit_code=exit_code,
-        arguments=sys.argv[1:],
-    )
-    raise typer.Exit(code=exit_code)
+        logger = structlog.get_logger()
+        findings: list[Finding] = []
+        scan_error = False
+        out_path = output if output is not None else DEFAULT_OUTPUT
+
+        with httpx.Client() as http:
+            for probe_cls in selected:
+                probe = probe_cls()
+                ctx = ProbeContext(
+                    target=target,
+                    endpoint=endpoint if endpoint is not None else probe.default_endpoint,
+                    credentials=credentials if probe.requires_credentials else None,
+                    scope=scope_file,
+                    http=http,
+                    logger=logger.bind(probe=probe.name),
+                    options=options,
+                )
+                try:
+                    findings.extend(probe.run(ctx))
+                except ProbeError as exc:
+                    scan_error = True
+                    typer.secho(
+                        f"probe {probe.name!r} failed: {exc}", err=True, fg=typer.colors.YELLOW
+                    )
+
+        exit_code = 2 if scan_error else (1 if findings else 0)
+        _emit_findings(
+            findings,
+            out_path,
+            output_format,
+            started_at=started_at,
+            target=target,
+            execution_successful=not scan_error,
+            exit_code=exit_code,
+            arguments=sys.argv[1:],
+        )
+        audit.set_output(out_path)
+        audit.set_findings(findings)
+        if scan_error:
+            audit.set_outcome("probe_error", 2)
+        elif findings:
+            audit.set_outcome("completed_with_findings", 1)
+        else:
+            audit.set_outcome("completed_clean", 0)
+        raise typer.Exit(code=exit_code)
+    except typer.Exit:
+        raise
+    except Exception:
+        audit.set_outcome("internal_error", 1)
+        raise
+    finally:
+        audit.flush()
 
 
 @scan_app.command("dow")
@@ -354,6 +419,16 @@ def scan_dow(
             ),
         ),
     ] = 10.0,
+    audit_log: Annotated[
+        Path | None,
+        typer.Option(
+            "--audit-log",
+            help=(
+                "Append a JSONL audit record for this scan to this path. Overrides "
+                "VECTRAVA_AUDIT_LOG_PATH. Parent directories are created."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run Denial-of-Wallet (dow) probes against an authorized target."""
     options: dict[str, JsonValue] = {
@@ -362,6 +437,9 @@ def scan_dow(
         "model": model,
         "max_rps": max_requests_per_second,
     }
+    resolved_audit = audit_log or (
+        Path(env_audit) if (env_audit := os.environ.get("VECTRAVA_AUDIT_LOG_PATH")) else None
+    )
     _run_scan(
         "dow",
         scope=scope,
@@ -375,6 +453,7 @@ def scan_dow(
         output=output,
         output_format=output_format,
         options=options,
+        audit_log=resolved_audit,
     )
 
 
@@ -452,6 +531,16 @@ def scan_ipi(
             ),
         ),
     ] = 10.0,
+    audit_log: Annotated[
+        Path | None,
+        typer.Option(
+            "--audit-log",
+            help=(
+                "Append a JSONL audit record for this scan to this path. Overrides "
+                "VECTRAVA_AUDIT_LOG_PATH. Parent directories are created."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run Indirect Prompt Injection probes against TARGET."""
     options: dict[str, JsonValue] = {
@@ -459,6 +548,9 @@ def scan_ipi(
         "max_turns": max_turns,
         "max_rps": max_requests_per_second,
     }
+    resolved_audit = audit_log or (
+        Path(env_audit) if (env_audit := os.environ.get("VECTRAVA_AUDIT_LOG_PATH")) else None
+    )
     _run_scan(
         "ipi",
         scope=scope,
@@ -472,6 +564,7 @@ def scan_ipi(
         output=output,
         output_format=output_format,
         options=options,
+        audit_log=resolved_audit,
     )
 
 
@@ -550,6 +643,16 @@ def scan_rag(
             ),
         ),
     ] = 10.0,
+    audit_log: Annotated[
+        Path | None,
+        typer.Option(
+            "--audit-log",
+            help=(
+                "Append a JSONL audit record for this scan to this path. Overrides "
+                "VECTRAVA_AUDIT_LOG_PATH. Parent directories are created."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run RAG pipeline boundary probes against TARGET."""
     options: dict[str, JsonValue] = {
@@ -557,6 +660,9 @@ def scan_rag(
         "num_sources": num_sources,
         "max_rps": max_requests_per_second,
     }
+    resolved_audit = audit_log or (
+        Path(env_audit) if (env_audit := os.environ.get("VECTRAVA_AUDIT_LOG_PATH")) else None
+    )
     _run_scan(
         "rag",
         scope=scope,
@@ -570,6 +676,7 @@ def scan_rag(
         output=output,
         output_format=output_format,
         options=options,
+        audit_log=resolved_audit,
     )
 
 

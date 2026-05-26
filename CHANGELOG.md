@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   probe's conversation length (default 5, capped at 10).
 - Per-client rate limiting in the HTTP layer, configured by
   `--max-requests-per-second`.
+- Opt-in audit log of scan invocations (`--audit-log <path>` or
+  `VECTRAVA_AUDIT_LOG_PATH`). One JSONL record per invocation captures the
+  outcome of both successful and refused scans, with the scope signer,
+  authorization deadline, a finding-severity summary, runner identity, and a
+  SHA-256 credential fingerprint (never the credential value). Fail-closed when
+  the path is unwritable.
 - `examples/scope.example.json` template and accompanying `examples/README.md`
   documenting the copy / edit / sign workflow.
 

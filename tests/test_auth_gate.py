@@ -73,3 +73,68 @@ def test_gate_rejects_untrusted_key(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     gate = AuthorizationGate(path)
     with pytest.raises(AuthorizationError, match="untrusted"):
         gate.check()
+
+
+def test_scope_present_on_expired_rejection(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    """An expired-but-valid scope attaches its parsed contents to the error."""
+    deadline = datetime.now(UTC) - timedelta(days=1)
+    path = signed_scope_factory(tmp_path, authorized_until=deadline)
+    gate = AuthorizationGate(path)
+    with pytest.raises(AuthorizationError) as exc_info:
+        gate.check()
+    assert exc_info.value.scope is not None
+    assert exc_info.value.scope.signed_by == "Shivamani Vastrala"
+    assert exc_info.value.scope.authorized_until.replace(tzinfo=UTC) == deadline
+
+
+def test_scope_present_on_unsigned_rejection(tmp_path: Path) -> None:
+    scope_data = {
+        "targets": ["https://example.test"],
+        "authorized_until": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+        "signed_by": "Unsigned Operator",
+    }
+    path = tmp_path / "scope.json"
+    path.write_text(json.dumps(scope_data), encoding="utf-8")
+    gate = AuthorizationGate(path)
+    with pytest.raises(AuthorizationError, match="not signed") as exc_info:
+        gate.check()
+    assert exc_info.value.scope is not None
+    assert exc_info.value.scope.signed_by == "Unsigned Operator"
+
+
+def test_scope_present_on_untrusted_rejection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TRUSTED_KEYS", "")
+    scope = ScopeFile(
+        targets=["https://example.test"],
+        authorized_until=datetime.now(UTC) + timedelta(days=1),
+        signed_by="Untrusted Operator",
+    )
+    priv_b64, _ = generate_keypair()
+    signed = sign_scope(scope, priv_b64)
+    path = tmp_path / "scope.json"
+    path.write_text(json.dumps(signed.model_dump(mode="json")), encoding="utf-8")
+    gate = AuthorizationGate(path)
+    with pytest.raises(AuthorizationError, match="untrusted") as exc_info:
+        gate.check()
+    assert exc_info.value.scope is not None
+    assert exc_info.value.scope.public_key is not None
+
+
+def test_scope_none_on_missing_file(tmp_path: Path) -> None:
+    gate = AuthorizationGate(tmp_path / "does-not-exist.json")
+    with pytest.raises(AuthorizationError) as exc_info:
+        gate.check()
+    assert exc_info.value.scope is None
+
+
+def test_scope_none_on_malformed_file(tmp_path: Path) -> None:
+    path = tmp_path / "malformed.json"
+    path.write_text("{not valid json", encoding="utf-8")
+    gate = AuthorizationGate(path)
+    with pytest.raises(AuthorizationError) as exc_info:
+        gate.check()
+    assert exc_info.value.scope is None
