@@ -18,9 +18,10 @@ the rationale for publishing them is documented in the dual-use section of
 
 vectrava ships three probe modules.
 
-`dow` (Denial-of-Wallet) measures how small, well-formed inputs can drive
+`dow` (Denial-of-Wallet) measures how small or malformed inputs can drive
 disproportionate downstream cost: large outputs from short prompts, padded
-short answers, and silent model substitution.
+short answers, silent model substitution, and billing on requests that should
+have been rejected at the validation layer.
 
 `ipi` (indirect prompt injection) tests whether untrusted content reaching the
 model can override the operator's instructions, extract confidential context,
@@ -32,9 +33,10 @@ citations, and contradictions between sources.
 
 | Module | Probe | Severity | Attack class |
 | ------ | ----- | -------- | ------------ |
-| `dow` | `token_amplification` | HIGH | Short prompts that elicit large, costly outputs (output-to-input token ratio). |
-| `dow` | `output_padding` | HIGH | Short-answer prompts whose responses are padded beyond their natural length. |
-| `dow` | `model_substitution` | HIGH | Target silently serves a different model than the one requested. |
+| `dow` | `token_amplification` | MEDIUM | Short prompts that elicit large, costly outputs (output-to-input token ratio). |
+| `dow` | `output_padding` | MEDIUM | Short-answer prompts whose responses are padded beyond their natural length. |
+| `dow` | `model_substitution` | MEDIUM | Target silently serves a different model than the one requested. |
+| `dow` | `error_amplification` | MEDIUM | Failed requests still report token usage, indicating billing on validation-rejected inputs. |
 | `ipi` | `direct_override` | HIGH | Instruction-override payload smuggled in untrusted data overrides the trusted task. |
 | `ipi` | `exfiltration_attempt` | CRITICAL | Injected user message extracts confidential content from the system prompt. |
 | `ipi` | `refusal_bypass` | HIGH | Jailbreak framings (hypothetical, educational pretext, roleplay) talk the model past its refusal. |

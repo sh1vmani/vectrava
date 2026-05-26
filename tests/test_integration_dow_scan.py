@@ -19,6 +19,9 @@ from typer.testing import CliRunner
 from vectrava.cli import app
 from vectrava.core import registry
 from vectrava.core.registry import register
+from vectrava.dow.probes.error_amplification import ErrorAmplificationProbe
+from vectrava.dow.probes.model_substitution import ModelSubstitutionProbe
+from vectrava.dow.probes.output_padding import OutputPaddingProbe
 from vectrava.dow.probes.token_amplification import TokenAmplificationProbe
 
 if TYPE_CHECKING:
@@ -32,6 +35,9 @@ Handler = Callable[[httpx.Request], httpx.Response]
 def _registry() -> Iterator[None]:
     registry.clear()
     register(TokenAmplificationProbe)
+    register(OutputPaddingProbe)
+    register(ModelSubstitutionProbe)
+    register(ErrorAmplificationProbe)
     yield
     registry.clear()
 
@@ -45,7 +51,7 @@ def _patch_client(monkeypatch: pytest.MonkeyPatch, handler: Handler) -> None:
     monkeypatch.setattr(httpx, "Client", factory)
 
 
-def _invoke(scope: Path, out: Path, fmt: str = "sarif") -> Any:
+def _invoke(scope: Path, out: Path, fmt: str = "sarif", only: str = "token_amplification") -> Any:
     return runner.invoke(
         app,
         [
@@ -57,6 +63,9 @@ def _invoke(scope: Path, out: Path, fmt: str = "sarif") -> Any:
             "https://example.test",
             "--api-key-env",
             "VECTRAVA_TEST_KEY",
+            "--only",
+            only,
+            "--yes",
             "--format",
             fmt,
             "--output",
@@ -301,3 +310,44 @@ def test_probe_failure_emits_unsuccessful_html(
     assert text.startswith("<!DOCTYPE html>")
     assert "Scan failed" in text
     assert '<table class="findings"' not in text
+
+
+def test_scan_dow_error_amplification_finds_when_usage_in_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        # Only the oversized_prompt shape (operator model, string content) returns
+        # usage on its rejection; the other shapes reject without a usage block.
+        oversized = body.get("model") == "gpt-4o-mini" and isinstance(
+            body["messages"][0]["content"], str
+        )
+        if oversized:
+            return httpx.Response(
+                400,
+                json={
+                    "error": {"code": "context_length_exceeded", "type": "invalid_request_error"},
+                    "usage": {
+                        "prompt_tokens": 90000,
+                        "completion_tokens": 0,
+                        "total_tokens": 90000,
+                    },
+                },
+            )
+        return httpx.Response(400, json={"error": {"message": "rejected"}})
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="error_amplification")
+
+    assert result.exit_code == 1
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
+    assert "error_amplification" in rule_ids
+    results = run["results"]
+    assert all(r["ruleId"] == "error_amplification" for r in results)
+    assert results[0]["properties"]["total_tokens"] == 90000
