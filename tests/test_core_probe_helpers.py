@@ -1,10 +1,10 @@
-"""Tests for core/probe_helpers, focused on the exchange_turn primitive.
+"""Tests for core/probe_helpers.
 
-exchange_turn is the shared single-turn conversation step used by the multi-turn
-probes. Every case uses httpx.MockTransport so no network is touched and no
-environment variable is read. The two older helpers in this module
-(extract_chat_completion_content, interleave_padding_chunks) are exercised
-indirectly through the probe suites.
+Covers the shared single-turn conversation step exchange_turn (which uses
+httpx.MockTransport so no network is touched and no environment variable is
+read), plus the two older helpers in this module, extract_chat_completion_content
+and interleave_padding_chunks, which previously had only indirect coverage
+through the probe suites.
 """
 
 from __future__ import annotations
@@ -15,7 +15,11 @@ import httpx
 import pytest
 
 from vectrava.core.probe import ProbeError
-from vectrava.core.probe_helpers import exchange_turn
+from vectrava.core.probe_helpers import (
+    exchange_turn,
+    extract_chat_completion_content,
+    interleave_padding_chunks,
+)
 
 Handler = Callable[[httpx.Request], httpx.Response]
 
@@ -129,3 +133,87 @@ def test_exchange_turn_honors_min_delay_s(monkeypatch: pytest.MonkeyPatch) -> No
     # (Windows monotonic is ~15.6ms), which is exactly what flaked on a CI runner.
     assert len(sleeps) == 1
     assert 0 < sleeps[0] <= 0.1
+
+
+# --- extract_chat_completion_content ---------------------------------------
+
+
+def test_extract_returns_content_for_valid_body() -> None:
+    body = {"choices": [{"message": {"content": "hello"}}]}
+    assert extract_chat_completion_content(body, "label", "probe") == "hello"
+
+
+def test_extract_raises_on_missing_choices() -> None:
+    with pytest.raises(ProbeError, match="chat-completions"):
+        extract_chat_completion_content({}, "label", "probe")
+    with pytest.raises(ProbeError, match="chat-completions"):
+        extract_chat_completion_content({"choices": []}, "label", "probe")
+
+
+def test_extract_raises_on_non_string_content() -> None:
+    for bad in (None, ["a", "b"], {"nested": 1}):
+        body = {"choices": [{"message": {"content": bad}}]}
+        with pytest.raises(ProbeError, match="not a string"):
+            extract_chat_completion_content(body, "label", "probe")
+
+
+def test_extract_raises_on_missing_message() -> None:
+    with pytest.raises(ProbeError, match="chat-completions"):
+        extract_chat_completion_content({"choices": [{}]}, "label", "probe")
+
+
+def test_extract_raises_on_missing_content() -> None:
+    with pytest.raises(ProbeError, match="chat-completions"):
+        extract_chat_completion_content({"choices": [{"message": {}}]}, "label", "probe")
+
+
+def test_extract_error_carries_label_and_probe_name() -> None:
+    with pytest.raises(ProbeError) as exc_info:
+        extract_chat_completion_content({}, "case_a", "my_probe")
+    assert exc_info.value.probe_name == "my_probe"
+    assert exc_info.value.details == {"injection_label": "case_a"}
+
+
+# --- interleave_padding_chunks ---------------------------------------------
+
+
+def test_interleave_returns_original_when_at_target_count() -> None:
+    chunks = ("a", "b", "c")
+    assert interleave_padding_chunks(chunks, ("x", "y"), 3) == chunks
+
+
+def test_interleave_returns_original_when_above_target_count() -> None:
+    chunks = ("a", "b", "c", "d", "e")
+    result = interleave_padding_chunks(chunks, ("x", "y"), 3)
+    assert result == chunks
+    assert len(result) == 5
+
+
+def test_interleave_pads_with_filler_when_below_target() -> None:
+    filler = ("x0", "x1", "x2", "x3", "x4")
+    result = interleave_padding_chunks(("c0",), filler, 4)
+    assert len(result) == 4
+    assert result[0] == "c0"
+    assert all(item in filler for item in result[1:])
+
+
+def test_interleave_cycles_filler_when_filler_shorter_than_pad() -> None:
+    result = interleave_padding_chunks(("c0",), ("x", "y"), 6)
+    assert len(result) == 6
+    # Five padding entries drawn from a two-item pool cycle: x, y, x, y, x.
+    assert result == ("c0", "x", "y", "x", "y", "x")
+
+
+def test_interleave_preserves_chunk_order() -> None:
+    # The helper interleaves filler between chunks, so chunks do not all precede
+    # filler; what is guaranteed is the chunks' relative order is preserved.
+    result = interleave_padding_chunks(("a", "b", "c"), ("x", "y"), 5)
+    assert len(result) == 5
+    assert result.index("a") < result.index("b") < result.index("c")
+    assert result == ("a", "x", "b", "y", "c")
+
+
+def test_interleave_with_empty_chunks_returns_filler_padding() -> None:
+    result = interleave_padding_chunks((), ("x", "y"), 3)
+    assert len(result) == 3
+    assert all(item in ("x", "y") for item in result)
