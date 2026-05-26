@@ -46,9 +46,14 @@ if TYPE_CHECKING:
 
     from pydantic import JsonValue
 
-# Cost transparency. The rate is a placeholder default; reading it from config is
-# a future enhancement.
-COST_PROMPT_THRESHOLD_TOKENS = 50_000
+# Cost transparency. The token threshold halts a full scan only when the
+# estimated worst-case spend is meaningfully large; 100,000 is roughly twice the
+# heaviest standard module's honest worst case (dow at ~55k tokens, driven by
+# error_amplification's oversized-prompt probe), so a normal full scan does not
+# prompt while a genuinely-runaway custom selection still does. USD_PER_1K_TOKENS
+# is a placeholder default; reading per-model pricing from config is a future
+# enhancement.
+COST_PROMPT_THRESHOLD_TOKENS = 100_000
 USD_PER_1K_TOKENS = 0.01
 VALID_FORMATS = ("sarif", "json", "html")
 DEFAULT_OUTPUT = Path("findings.sarif")
