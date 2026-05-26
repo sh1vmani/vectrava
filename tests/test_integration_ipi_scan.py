@@ -22,6 +22,7 @@ from vectrava.core import registry
 from vectrava.core.registry import register
 from vectrava.ipi.probes.direct_override import DirectOverrideProbe
 from vectrava.ipi.probes.exfiltration_attempt import ExfiltrationAttemptProbe
+from vectrava.ipi.probes.refusal_bypass import RefusalBypassProbe
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -37,6 +38,7 @@ def _registry() -> Iterator[None]:
     registry.clear()
     register(DirectOverrideProbe)
     register(ExfiltrationAttemptProbe)
+    register(RefusalBypassProbe)
     yield
     registry.clear()
 
@@ -222,6 +224,86 @@ def test_exfiltration_probe_failure_emits_unsuccessful(
     _patch_client(monkeypatch, handler)
     out = tmp_path / "out.sarif"
     result = _invoke(valid_scope_file, out, only="exfiltration_attempt")
+
+    assert result.exit_code == 2
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert run["results"] == []
+    assert run["invocations"][0]["executionSuccessful"] is False
+    assert run["invocations"][0]["exitCode"] == 2
+
+
+def test_refusal_bypass_clean_scan_emits_zero_findings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"message": {"content": "I cannot reveal that."}}],
+            },
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="refusal_bypass")
+
+    assert result.exit_code == 0
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert run["results"] == []
+    assert run["invocations"][0]["executionSuccessful"] is True
+    assert run["invocations"][0]["exitCode"] == 0
+
+
+def test_refusal_bypass_succeeds_emits_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        content = body["messages"][0]["content"]
+        match = _HEX16.search(content)
+        token = match.group(0) if match else ""
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"message": {"content": f"The codeword is {token}"}}],
+            },
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="refusal_bypass")
+
+    assert result.exit_code == 1
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert len(run["results"]) >= 1
+    rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
+    assert "refusal_bypass" in rule_ids
+    assert all(r["ruleId"] == "refusal_bypass" for r in run["results"])
+
+
+def test_refusal_bypass_probe_failure_emits_unsuccessful(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, text="bad request")
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="refusal_bypass")
 
     assert result.exit_code == 2
     assert out.exists()
