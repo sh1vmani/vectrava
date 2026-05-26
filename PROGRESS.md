@@ -745,11 +745,184 @@ State at end of Day 4:
   1m47s, No Secrets ~10s, CodeQL + Scorecard skipped under the private-repo
   gate)
 
+### Day 5 close (2026-05-25)
+
+Brought the scanner from one-and-a-half modules to three complete modules and
+hardened the repository for the Week 12 public flip. 21 commits, all CI-green.
+Tests grew 136 to 223, mypy stayed clean across 47 to 62 source files. The rag
+module went live with its full probe set, ipi reached three probes, dow gained
+a fourth, the CLI options grammar became module-agnostic, the HTTP layer gained
+rate limiting, scan-level target now threads through every writer, and the
+contributor-facing docs (README, per-module READMEs, CHANGELOG, SECURITY,
+CONTRIBUTING, examples, issue and PR templates) were rewritten or added.
+
+Commits, in order:
+
+- `0114b8a` docs(repo): record day 4 progress.
+- `c37b423` docs(repo): refresh stale not-done entries.
+- `99924e0` feat(rag): activate rag module and add cross-document injection
+  probe.
+- `bc3d12d` refactor(cli): make _run_scan options grammar module-agnostic.
+- `e22bad4` feat(rag): add citation hijack probe and update integration
+  scaffold.
+- `db136c7` feat(ipi): add exfiltration attempt probe and update integration
+  scaffold.
+- `bd49f2b` refactor(core): extract chat completion content helper to
+  core/probe_helpers.
+- `7c372c6` feat(cli): add --num-sources flag to scan rag for retrieval
+  distractor testing.
+- `155a571` feat(rag): add cross source contradiction probe and extract padding
+  helper.
+- `2b3b9d1` feat(core): add per-client rate limiting to post_with_retry with CLI
+  flag.
+- `f82d421` fix(test): replace wall-clock pacing assertion with monkeypatched
+  sleep capture.
+- `ede8e45` docs(repo): add response time and dual use sections to SECURITY.md.
+- `c937a89` feat(ipi): add refusal bypass probe and bring ipi to three probes.
+- `79ec915` docs(repo): rewrite README and per-module READMEs for current state.
+- `3b4c2e5` feat(output): thread scan-level target through writers.
+- `c24df5b` docs(repo): add examples directory with sample scope file.
+- `937a13c` feat(dow): add error amplification probe.
+- `18a6ebd` test(dow): pin required ClassVars across dow probes.
+- `ef76911` docs(repo): refresh CONTRIBUTING and re-sync CLAUDE module sentence.
+- `119a64c` docs(repo): add CHANGELOG seeded from project history.
+- `4601f58` docs(repo): add GitHub issue and PR templates.
+
+What shipped:
+
+rag module activation and full probe set. The third scanner module went from an
+empty scaffold to three probes in one day, in sequence:
+`cross_document_injection` first (the activation commit, which opened the
+retrieval-boundary attack surface), then `citation_hijack`, then
+`cross_source_contradiction`. The third probe is what triggered extraction of
+the chunk-padding helper: `cross_document_injection` and `citation_hijack` each
+had their own inline padding logic, and when `cross_source_contradiction` needed
+the same shape it became the third user, so `interleave_padding_chunks` was
+lifted into `core/probe_helpers.py` and all three rag probes now consume it.
+
+ipi module completion to three probes. `direct_override` already existed from
+Day 4. This day added `exfiltration_attempt` and `refusal_bypass`.
+`exfiltration_attempt` is the only CRITICAL probe in the catalog. Every other
+probe tops out at HIGH. The reason is impact: a system-prompt or instruction
+leak is high-impact regardless of the surrounding context, because it hands an
+attacker the model's hidden configuration and any secrets embedded in it, so it
+sits one notch above the override and bypass probes. `refusal_bypass` is HIGH,
+matching the rest of the ipi surface.
+
+Module-agnostic `_run_scan` options grammar. The scan runner previously
+hardcoded a dow-shaped options dict (`threshold`, `model`, `padding_threshold`)
+that ipi had to pass through and ignore. The refactor inverts that: each
+`scan_X` command builds its own options dict and the runner stays neutral. The
+new grammar was validated end-to-end twice, once with the rag-specific
+`--num-sources` flag and once with the cross-cutting
+`--max-requests-per-second` flag, so both a module-local option and a shared
+option exercise the path.
+
+Shared helper extraction on the Rule of Three trigger. Two helpers moved into
+`core/probe_helpers.py` once a third caller justified the shape.
+`extract_chat_completion_content` is used by all five injection probes (three
+ipi, two of the rag set that read response content), and
+`interleave_padding_chunks` is used by all three rag probes. The rule that
+landed during the third rag probe: a new probe is written to consume the shared
+helper from the start rather than carrying its own copy that gets lifted later.
+
+Per-client rate limiting in `core/http.py`. `post_with_retry` gained a
+`min_delay_s` keyword that paces requests per HTTP client, with the per-client
+state keyed through a weakref so clients can be garbage collected without
+leaking pacing entries. The CLI sets the default pacing at the command layer
+(10 requests per second) rather than baking a delay into every probe, so probes
+stay pacing-agnostic. The test suite pays no pacing tax: the default in tests is
+no delay, and the one pacing test monkeypatches `sleep` rather than measuring
+wall-clock time.
+
+dow module diversification. `error_amplification` is the fourth dow probe and it
+diverges structurally from the first three. Where `token_amplification`,
+`output_padding`, and `model_substitution` go through
+`dow.client.call_completion`, `error_amplification` calls `post_with_retry`
+directly, because it has to inspect non-2xx response bodies for a usage block:
+some providers bill for and report token usage even on error responses, and
+`call_completion` raises before that body is reachable. This deliberately breaks
+the tidy 3-3-3 probe-count symmetry across modules. Correctness of the probe
+beats a cosmetic invariant.
+
+Writer interface target threading. Scan-level target is now a first-class field
+through all three writers. The HTML clean-scan path no longer renders `n/a` for
+the target when there are zero findings, and SARIF and JSON gained a scan-level
+target field they did not previously carry. In SARIF the target lands on
+`runs[0].invocations[0].properties.target`, keeping it within the schema rather
+than inventing a top-level extension.
+
+SARIF trailing-newline fix. `write_sarif` now emits a single trailing newline to
+match `write_json`, closing the Day 3 carry-forward so both writers produce
+POSIX-clean files.
+
+dow severity correction. The three pre-existing dow rows in the top-level README
+and the dow per-module README were documented as HIGH, but the code sets them
+MEDIUM. The code was correct and the docs overstated severity. Fixed in the same
+commit that added the fourth dow probe so the table reflects all four rows at
+their true severity.
+
+Doc rewrite for Week 12 readiness. `README.md` was rewritten with a probe table
+(nine probes, then ten after `error_amplification`), a Quickstart using the real
+CLI, and an authorization-model section. The per-module READMEs gained probe
+inventory tables. `examples/scope.example.json` and `examples/README.md` were
+added as an operator quickstart template for the keypair, signing, and
+`VECTRAVA_TRUSTED_KEYS` workflow. `SECURITY.md` gained response-time and
+dual-use disclosure sections. `CONTRIBUTING.md` was refreshed to the corrected
+18-scope list, the real gate commands, a git-hooks paragraph, and a
+dev-scan pointer. `CLAUDE.md` was re-synced with `AGENTS.md` so the module
+sentence is byte-identical between them.
+
+CHANGELOG.md added. Seeded from project history in the Keep a Changelog 1.1.0
+format with a single `[Unreleased]` section.
+
+GitHub templates added. Two issue templates (bug report and feature request) and
+one pull request template under `.github/`, carrying redaction guidance for
+credentials and scope files and a checklist mirroring the CONTRIBUTING gates.
+
+Test discipline. `test_required_classvars_set` was backfilled across all four
+dow probes so dow now matches the ClassVar pinning that ipi and rag already had.
+The writer changes added a clean-scan test per writer covering the zero-findings
+target-rendering path.
+
+Process meta. Two of the 21 commits are PROGRESS housekeeping: `0114b8a` wrote
+the Day 4 close section itself, and `c37b423` refreshed the then-stale Not-done
+bullet. That bullet has since drifted again (it predates the rag module landing
+30 minutes later) and is rewritten in this commit.
+
+Carry-forward to Day 6:
+
+- Week 12 gate-removal on `codeql.yml` and `scorecard.yml` is still pending the
+  repository public flip, carried since Day 3.
+- Scope file revocation: there is no mid-deadline revocation mechanism, a future
+  feature.
+- Audit log of scan invocations is not implemented, a future feature for
+  regulated-environment deployments.
+- Multi-turn probe infrastructure (conversational state for probes that need it)
+  is a multi-session lift not yet started.
+- `README.md` and `CONTRIBUTING.md` do not yet link to `CHANGELOG.md`, a small
+  follow-on.
+- Environmental observation: pytest occasionally exits 139 on Windows mid-suite,
+  a native access violation inside jsonschema's recursive `$ref` descent during
+  SARIF schema validation. It is transient, re-runs pass, and it is not a code
+  defect, but it is worth knowing.
+
+State at end of Day 5:
+
+- HEAD before this commit: 4601f58
+- Total commits: 52 (51 before this commit)
+- Tests: 223 passing
+- mypy: clean across 62 source files
+- Probe inventory: dow 4, ipi 3, rag 3 (10 total)
+- Modules active: dow, ipi, rag
+- Output writers: SARIF v2.1.0, JSON, HTML
+- Workflows: CI green, No Secrets green, CodeQL skipped (private gate), Scorecard
+  skipped (private gate)
+
 ### Not done
 
-- rag module: no probes implemented yet. dow has three
-  (`token_amplification`, `output_padding`,
-  `model_substitution`), ipi has one (`direct_override`).
+Carry-forward items live in the most recent day-close section's "Carry-forward"
+bullets to avoid two sources of truth. See the current Day close above.
 
 ## Review checkpoints
 
