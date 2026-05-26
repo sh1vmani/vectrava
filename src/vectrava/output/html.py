@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from vectrava.output.sarif import map_level
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
     from pydantic import JsonValue
@@ -53,8 +53,16 @@ td.sev-note { background: #e8f0fe; }
 .turn-assistant { border-left-color: #34a853; background: #e6f4ea; }
 .role-label { font-weight: 700; text-transform: uppercase; font-size: 0.7rem;
   letter-spacing: 0.05em; color: #555; margin-bottom: 0.2rem; }
-.turn-content { white-space: pre-wrap; word-break: break-word; max-height: 20rem;
-  overflow-y: auto; font-family: ui-monospace, Consolas, monospace; font-size: 0.85rem; }
+.turn-content, .evidence-value { white-space: pre-wrap; word-break: break-word;
+  max-height: 20rem; overflow-y: auto; font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85rem; }
+.evidence { display: flex; flex-direction: column; gap: 0.3rem; margin: 0.5rem 0 0.25rem; }
+.evidence-pair { display: flex; gap: 0.6rem; align-items: baseline; }
+.evidence-key { flex: 0 0 12rem; font-weight: 700; font-family: ui-monospace, Consolas,
+  monospace; font-size: 0.75rem; color: #555; word-break: break-word; }
+.evidence-table { border-collapse: collapse; font-size: 0.8rem; }
+.evidence-table td { border: 1px solid #ddd; padding: 0.1rem 0.4rem;
+  font-family: ui-monospace, Consolas, monospace; }
 footer { margin-top: 2rem; color: #777; font-size: 0.85rem;
   border-top: 1px solid #eee; padding-top: 0.75rem; }
 </style>"""
@@ -106,6 +114,57 @@ def _render_conversation(turns: JsonValue) -> str | None:
         '<tr class="conversation-row"><td colspan="5">'
         f"<details open><summary>Conversation ({len(turns)} turns)</summary>"
         f'<div class="conversation">{body}</div></details>'
+        "</td></tr>"
+    )
+
+
+def _render_evidence_pair(key: str, value: JsonValue) -> str:
+    """Render one evidence key/value as a pair div, dispatching on the value type."""
+    key_html = _h(key)
+    if isinstance(value, bool):
+        value_html = _h(str(value))
+    elif value is None:
+        value_html = "(not reported)"
+    elif isinstance(value, str):
+        value_html = _h(value)
+    elif isinstance(value, (int, float)):
+        value_html = _h(str(value))
+    elif isinstance(value, dict):
+        rows = "".join(
+            f"<tr><td>{_h(str(k))}</td><td>{_h(str(v))}</td></tr>" for k, v in value.items()
+        )
+        return (
+            f'<div class="evidence-pair"><span class="evidence-key">{key_html}</span>'
+            f'<table class="evidence-table">{rows}</table></div>'
+        )
+    else:
+        # Lists other than "turns" (already handled) and any nested shape: no such
+        # evidence exists today, so this is a defensive fallback, not a real path.
+        value_html = "(complex value)"
+    return (
+        f'<div class="evidence-pair"><span class="evidence-key">{key_html}</span>'
+        f'<span class="evidence-value">{value_html}</span></div>'
+    )
+
+
+def _render_evidence(evidence: Mapping[str, JsonValue]) -> str | None:
+    """Render a finding's evidence (every key except "turns") as a sub-row, or None.
+
+    "turns" is rendered separately by _render_conversation; it is skipped here by
+    name. Each remaining key becomes a key/value pair (dict values become a small
+    inline table); keys and values are escaped through _h. Returns None when there
+    are no non-turns keys to show.
+    """
+    pairs = [_render_evidence_pair(key, value) for key, value in evidence.items() if key != "turns"]
+    if not pairs:
+        return None
+    body = "".join(pairs)
+    # colspan must equal the findings-table column count: Severity, Rule ID, Probe,
+    # Message, Location = 5. If a column is added or removed, update this literal.
+    return (
+        '<tr class="evidence-row"><td colspan="5">'
+        f"<details open><summary>Evidence ({len(pairs)} fields)</summary>"
+        f'<div class="evidence">{body}</div></details>'
         "</td></tr>"
     )
 
@@ -187,6 +246,9 @@ def build_html_report(
                 f"<td>{_h(finding.message)}</td>"
                 f"<td>{_h(finding.target)}</td></tr>"
             )
+            evidence_row = _render_evidence(finding.evidence)
+            if evidence_row is not None:
+                parts.append(evidence_row)
             conversation_row = _render_conversation(finding.evidence.get("turns"))
             if conversation_row is not None:
                 parts.append(conversation_row)

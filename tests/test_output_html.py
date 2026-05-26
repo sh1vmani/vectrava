@@ -261,3 +261,112 @@ def test_conversation_unknown_role_falls_back_to_generic() -> None:
     report = _report([_finding_with_turns([{"role": "moderator", "content": "hello"}])])
     assert 'class="turn"' in report
     assert "turn-moderator" not in report
+
+
+def _finding_with_evidence(evidence: dict[str, JsonValue]) -> Finding:
+    return Finding(
+        rule_id="rate_limit_bypass",
+        probe="dow.rate_limit_bypass",
+        level=Severity.MEDIUM,
+        message="evidence demo",
+        target="https://t.test/v1/chat/completions",
+        evidence=evidence,
+    )
+
+
+def test_evidence_string_value_renders_key_and_value() -> None:
+    # Use a low-entropy placeholder, not a hex-token literal: a real probe canary
+    # is generated at runtime via secrets.token_hex, but a literal 16-hex string
+    # in source trips the gitleaks generic-api-key rule.
+    report = _report([_finding_with_evidence({"canary_token": "leaked-marker-one"})])
+    assert 'class="evidence-row"' in report
+    assert 'class="evidence-key">canary_token</span>' in report
+    assert 'class="evidence-value">leaked-marker-one</span>' in report
+
+
+def test_evidence_integer_value_renders() -> None:
+    report = _report([_finding_with_evidence({"chunk_count": 3})])
+    assert 'class="evidence-key">chunk_count</span>' in report
+    assert 'class="evidence-value">3</span>' in report
+
+
+def test_evidence_bool_value_renders() -> None:
+    report = _report([_finding_with_evidence({"saw_429": False})])
+    assert 'class="evidence-key">saw_429</span>' in report
+    assert 'class="evidence-value">False</span>' in report
+
+
+def test_evidence_dict_value_renders_as_table() -> None:
+    report = _report([_finding_with_evidence({"status_counts": {"200": 18, "429": 2}})])
+    assert 'class="evidence-table"' in report
+    assert "<td>200</td>" in report
+    assert "<td>18</td>" in report
+    assert "<td>429</td>" in report
+    assert "<td>2</td>" in report
+
+
+def test_evidence_multiple_keys_render_in_probe_order() -> None:
+    report = _report(
+        [
+            _finding_with_evidence(
+                {
+                    "framing_label": "roleplay_writer",
+                    "canary_token": "leaked-marker-two",
+                    "response_excerpt": "the codeword is leaked",
+                }
+            )
+        ]
+    )
+    assert report.index("framing_label") < report.index("canary_token")
+    assert report.index("canary_token") < report.index("response_excerpt")
+
+
+def test_evidence_turns_key_is_not_double_rendered() -> None:
+    report = _report(
+        [
+            _finding_with_evidence(
+                {
+                    "injection_label": "direct",
+                    "canary_token": "leaked-marker-three",
+                    "turns": [{"role": "user", "content": "hi there"}],
+                }
+            )
+        ]
+    )
+    # Scalars render in the evidence row; turns render only in the conversation row.
+    assert 'class="evidence-row"' in report
+    assert 'class="evidence-key">injection_label</span>' in report
+    assert 'class="conversation-row"' in report
+    assert "hi there" in report
+    # "turns" must not appear as an evidence key.
+    assert 'class="evidence-key">turns</span>' not in report
+
+
+def test_evidence_value_is_html_escaped() -> None:
+    report = _report([_finding_with_evidence({"response_excerpt": "<script>alert('x')</script>"})])
+    assert "<script>" not in report
+    assert "&lt;script&gt;" in report
+
+
+def test_evidence_long_prompt_template_renders() -> None:
+    long_template = "x" * 600
+    report = _report([_finding_with_evidence({"prompt_template": long_template})])
+    assert 'class="evidence-value"' in report
+    assert long_template in report
+
+
+def test_evidence_empty_emits_no_row() -> None:
+    report = _report([_finding()])
+    assert 'class="evidence-row"' not in report
+
+
+def test_evidence_none_value_renders_sentinel() -> None:
+    report = _report([_finding_with_evidence({"reported_model": None})])
+    assert "(not reported)" in report
+    assert 'class="evidence-value">None</span>' not in report
+
+
+def test_evidence_empty_dict_value_does_not_crash() -> None:
+    report = _report([_finding_with_evidence({"status_counts": {}})])
+    assert 'class="evidence-row"' in report
+    assert 'class="evidence-table"' in report

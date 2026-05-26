@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the path is unwritable.
 - HTML report now renders `evidence['turns']` as an expandable conversation
   transcript for multi-turn findings.
+- HTML reports now render finding evidence beyond the conversation transcript:
+  probe-emitted scalar fields, status counts, and other evidence keys appear in
+  an expandable Evidence block per finding.
 - `examples/scope.example.json` template and accompanying `examples/README.md`
   documenting the copy / edit / sign workflow.
 
