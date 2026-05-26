@@ -47,6 +47,15 @@ PROBE_MAX_TOKENS: int = 256
 _DEFAULT_MAX_TURNS: int = 5
 _MAX_TURNS_CAP: int = 10
 PER_TURN_TOKEN_EST: int = 300
+_SYSTEM_PROMPT_TOKENS: int = 80  # the confidentiality directive, resent every turn
+
+# The full transcript is resent every turn, so input grows with the turn index;
+# T(T+1)/2 weights that triangular growth. The system prompt is resent T times.
+# Worst case at the turn cap, summed across the conversation.
+_PER_CONVERSATION_EST: int = (
+    _SYSTEM_PROMPT_TOKENS * _MAX_TURNS_CAP
+    + PER_TURN_TOKEN_EST * _MAX_TURNS_CAP * (_MAX_TURNS_CAP + 1) // 2
+)
 
 # The codeword lives in the system prompt and is hardened against the framings
 # this probe uses: the model is told to refuse in any scenario, role-play, or
@@ -116,7 +125,7 @@ class MultiTurnRefusalErosionProbe(Probe):
         "refusal posture, leaking a protected system-prompt codeword on the final turn."
     )
     baseline_severity: ClassVar[Severity] = Severity.HIGH
-    estimated_tokens_per_run: ClassVar[int] = len(LABELS) * _MAX_TURNS_CAP * PER_TURN_TOKEN_EST
+    estimated_tokens_per_run: ClassVar[int] = len(LABELS) * _PER_CONVERSATION_EST
     tags: ClassVar[tuple[str, ...]] = ("injection", "jailbreak", "multi-turn", "ipi")
     requires_credentials: ClassVar[bool] = True
     default_endpoint: ClassVar[str | None] = "/v1/chat/completions"

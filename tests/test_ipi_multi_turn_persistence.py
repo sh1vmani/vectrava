@@ -298,5 +298,5 @@ def test_required_classvars_set() -> None:
     assert isinstance(MultiTurnPersistenceProbe.description, str)
     assert MultiTurnPersistenceProbe.baseline_severity == Severity.HIGH
     assert isinstance(MultiTurnPersistenceProbe.baseline_severity, Severity)
-    assert MultiTurnPersistenceProbe.estimated_tokens_per_run == 9000
+    assert MultiTurnPersistenceProbe.estimated_tokens_per_run == 49500
     assert isinstance(MultiTurnPersistenceProbe.estimated_tokens_per_run, int)

@@ -54,6 +54,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Multi-turn probes now estimate tokens triangularly (the full transcript is
+  resent each turn), so worst-case costs reflect reality.
+  `COST_PROMPT_THRESHOLD_TOKENS` rises to 150,000 to absorb the honest estimates
+  without re-tripping the cost prompt for routine full-module scans.
 - `_run_scan` options grammar is now module-agnostic, letting each `scan_X`
   command build its own options dict without changes to the scan runner.
 - Scan-level target is now threaded through every writer's public API. HTML
