@@ -33,6 +33,10 @@ uv run pytest
 New behavior needs tests. Bug fixes should add a test that fails before the fix
 and passes after.
 
+User-facing changes should be recorded in [CHANGELOG.md](./CHANGELOG.md) under
+the `[Unreleased]` section in the appropriate Keep a Changelog category (Added,
+Changed, Deprecated, Removed, Fixed, Security).
+
 ## Commit messages
 
 Commits use [Conventional Commits](https://www.conventionalcommits.org/) with a

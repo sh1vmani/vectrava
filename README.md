@@ -14,6 +14,9 @@ exploits and are visible in source under `src/vectrava/{dow,ipi,rag}/probes/`;
 the rationale for publishing them is documented in the dual-use section of
 [SECURITY.md](SECURITY.md).
 
+Release history and notable changes are tracked in
+[CHANGELOG.md](./CHANGELOG.md).
+
 ## What it tests
 
 vectrava ships three probe modules.
