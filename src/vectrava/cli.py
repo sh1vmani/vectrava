@@ -776,6 +776,11 @@ def audit_verify(
     (modification, deletion, reordering, or insertion all surface as a prev_hash
     mismatch). Legacy records with no prev_hash field are skipped; the first
     chained record after them anchors to the prior line's hash.
+
+    Verification reads the log without locking; for accurate results, run when
+    scans are not actively writing the log. A scan completing mid-verification can
+    produce a transient malformed-JSON or chain-mismatch report that re-runs
+    cleanly.
     """
     # Read bytes and split on "\n" so we hash exactly the bytes on disk (matching
     # the writer's _read_tail_line), independent of platform newline translation.

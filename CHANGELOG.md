@@ -68,6 +68,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `AuditWriter` now serializes concurrent flushes to one audit log path via an
+  OS file lock (`fcntl.flock` on Linux and macOS, `msvcrt.locking` on Windows),
+  enforcing at the OS level the single-writer-per-path invariant the hash chain
+  requires for integrity. A flush that cannot acquire the lock within 5 seconds
+  raises `AuditError`. The verifier (`vtra audit verify`) remains lock-free; run
+  it when scans are not actively writing the log to avoid transient mismatch
+  reports.
 - Multi-turn probes now estimate tokens triangularly (the full transcript is
   resent each turn), so worst-case costs reflect reality.
   `COST_PROMPT_THRESHOLD_TOKENS` rises to 150,000 to absorb the honest estimates

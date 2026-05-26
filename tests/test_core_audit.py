@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -18,7 +21,9 @@ from vectrava.core.audit import (
     _CHAIN_SENTINEL,
     AuditError,
     AuditWriter,
+    _acquire_lock,
     _read_tail_line,
+    _release_lock,
     credential_fingerprint,
     file_sha256,
     signature_fingerprint,
@@ -272,3 +277,126 @@ def test_read_tail_line_returns_last_line_no_trailing_newline(tmp_path: Path) ->
     path = tmp_path / "audit.jsonl"
     path.write_text("line1\nline2", encoding="utf-8")  # no trailing newline
     assert _read_tail_line(path) == b"line2"
+
+
+# --- file locking ----------------------------------------------------------
+
+
+def _flush_record(path: Path) -> None:
+    writer = AuditWriter(path)
+    writer.preflight()
+    _stamp(writer)
+    writer.set_outcome("completed_clean", 0)
+    writer.flush()
+
+
+def test_flush_acquires_and_releases_lock(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    # Two sequential flushes in one process must not self-deadlock: each opens its
+    # own fd, locks, and releases on close before the next runs.
+    _flush_record(path)
+    _flush_record(path)
+    lines = _read_lines(path)
+    assert len(lines) == 2
+    record_b = json.loads(lines[1])
+    assert record_b["prev_hash"] == hashlib.sha256(lines[0].encode("utf-8")).hexdigest()
+
+
+def test_flush_blocks_concurrent_writer_then_proceeds(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    _flush_record(path)  # seed one record so the file exists and is non-empty
+
+    holder_locked = threading.Event()
+
+    def holder() -> None:
+        fd = os.open(str(path), os.O_RDWR)
+        try:
+            _acquire_lock(fd)
+            holder_locked.set()
+            time.sleep(0.2)  # hold briefly, then release in finally
+        finally:
+            _release_lock(fd)
+            os.close(fd)
+
+    thread = threading.Thread(target=holder)
+    thread.start()
+    assert holder_locked.wait(timeout=5)
+    # flush() polls until the holder releases (~0.2s), then appends.
+    _flush_record(path)
+    thread.join()
+
+    lines = _read_lines(path)
+    assert len(lines) == 2
+    record_b = json.loads(lines[1])
+    assert record_b["prev_hash"] == hashlib.sha256(lines[0].encode("utf-8")).hexdigest()
+
+
+def test_flush_raises_audit_error_on_lock_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "audit.jsonl"
+    _flush_record(path)
+    monkeypatch.setattr("vectrava.core.audit._LOCK_TIMEOUT_S", 0.2)
+
+    holder_locked = threading.Event()
+    release = threading.Event()
+
+    def holder() -> None:
+        fd = os.open(str(path), os.O_RDWR)
+        try:
+            _acquire_lock(fd)
+            holder_locked.set()
+            release.wait(timeout=5)
+        finally:
+            _release_lock(fd)
+            os.close(fd)
+
+    thread = threading.Thread(target=holder)
+    thread.start()
+    try:
+        assert holder_locked.wait(timeout=5)
+        writer = AuditWriter(path)
+        _stamp(writer)
+        writer.set_outcome("completed_clean", 0)
+        with pytest.raises(AuditError, match="could not acquire") as exc_info:
+            writer.flush()
+        assert str(path) in str(exc_info.value)
+    finally:
+        release.set()
+        thread.join()
+
+
+def test_disabled_writer_does_not_acquire_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*args: object, **kwargs: object) -> None:
+        msg = "lock must not be acquired for a disabled writer"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr("vectrava.core.audit._acquire_lock", boom)
+    writer = AuditWriter(None)
+    writer.preflight()
+    _stamp(writer)
+    writer.set_outcome("completed_clean", 0)
+    writer.flush()  # returns before any open/lock; boom is never called
+
+
+def test_lock_released_on_exception_during_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "audit.jsonl"
+
+    def boom(handle: object) -> bytes | None:
+        msg = "boom during tail read"
+        raise ValueError(msg)
+
+    monkeypatch.setattr("vectrava.core.audit._read_tail_from_fd", boom)
+    writer = AuditWriter(path)
+    writer.preflight()
+    _stamp(writer)
+    writer.set_outcome("completed_clean", 0)
+    with pytest.raises(ValueError, match="boom"):
+        writer.flush()
+
+    # The with-block closed the fd, releasing the lock. A fresh flush must succeed.
+    monkeypatch.undo()
+    _flush_record(path)
+    assert len(_read_lines(path)) == 1
