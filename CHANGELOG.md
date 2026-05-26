@@ -14,8 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   boundary probes).
 - `dow` probes: `token_amplification`, `output_padding`, `model_substitution`,
   and `error_amplification`.
-- `ipi` probes: `direct_override`, `exfiltration_attempt`, `refusal_bypass`, and
-  `multi_turn_persistence`.
+- `ipi` probes: `direct_override`, `exfiltration_attempt`, `refusal_bypass`,
+  `multi_turn_persistence`, and `multi_turn_refusal_erosion`.
 - `rag` probes: `cross_document_injection`, `citation_hijack`, and
   `cross_source_contradiction`.
 - Ed25519-signed scope-file authorization gate. Every scan refuses to run until

@@ -9,6 +9,9 @@ the probe suite grows.
 
 from __future__ import annotations
 
+import httpx
+
+from vectrava.core.http import post_with_retry
 from vectrava.core.probe import ProbeError
 
 
@@ -90,3 +93,86 @@ def interleave_padding_chunks(
         padded.append(next(filler_iter))
         padding_count -= 1
     return tuple(padded)
+
+
+def exchange_turn(
+    *,
+    client: httpx.Client,
+    url: str,
+    messages: list[dict[str, str]],
+    model: str,
+    max_tokens: int,
+    credential: str,
+    probe_name: str,
+    label: str,
+    turn_index: int,
+    timeout: float = 60.0,
+    min_delay_s: float = 0.0,
+) -> str:
+    """Run one chat-completions turn against the target and capture the reply.
+
+    Sends the current `messages` list, fails fast on an HTTP error, extracts the
+    assistant content, and appends it back so the conversation grows turn by turn.
+    This is the shared single-turn primitive for multi-turn probes; the caller
+    owns the outer loop, the detection rule, and the choice of the next user turn.
+
+    The `messages` list is mutated in place: on success an assistant turn
+    `{"role": "assistant", "content": content}` is appended before returning.
+
+    Args:
+        client: Synchronous HTTP client supplied by the runner.
+        url: Fully resolved POST URL.
+        messages: The running conversation. Mutated in place (assistant turn
+            appended on success).
+        model: Model identifier placed in the request body.
+        max_tokens: Output cap requested from the target.
+        credential: Resolved BYOK value, sent as a Bearer token. Headers are
+            built internally; the caller does not pass a header dict.
+        probe_name: The calling probe's name, used for error attribution.
+        label: The probe-internal label of the current injection or framing case.
+        turn_index: The 1-based conversation turn index, combined with `label`
+            for error context.
+        timeout: Per-request timeout in seconds.
+        min_delay_s: Minimum seconds between consecutive requests on the same
+            client, forwarded to post_with_retry for rate limiting.
+
+    Returns:
+        The assistant message content from this turn.
+
+    Raises:
+        ProbeError: on a non-2xx status, or when the response is not a
+            chat-completions object with string message content.
+    """
+    payload: dict[str, object] = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+    }
+    headers = {
+        "Authorization": f"Bearer {credential}",
+        "Content-Type": "application/json",
+    }
+    response = post_with_retry(
+        client,
+        url,
+        json=payload,
+        headers=headers,
+        timeout=timeout,
+        min_delay_s=min_delay_s,
+    )
+    if response.status_code >= 400:
+        raise ProbeError(
+            f"target returned HTTP {response.status_code}",
+            probe_name=probe_name,
+            details={
+                "status": response.status_code,
+                "injection_label": label,
+                "turn": turn_index,
+            },
+        )
+
+    content = extract_chat_completion_content(
+        response.json(), f"{label}:turn{turn_index}", probe_name
+    )
+    messages.append({"role": "assistant", "content": content})
+    return content

@@ -23,6 +23,7 @@ from vectrava.core.registry import register
 from vectrava.ipi.probes.direct_override import DirectOverrideProbe
 from vectrava.ipi.probes.exfiltration_attempt import ExfiltrationAttemptProbe
 from vectrava.ipi.probes.multi_turn_persistence import MultiTurnPersistenceProbe
+from vectrava.ipi.probes.multi_turn_refusal_erosion import MultiTurnRefusalErosionProbe
 from vectrava.ipi.probes.refusal_bypass import RefusalBypassProbe
 
 if TYPE_CHECKING:
@@ -41,6 +42,7 @@ def _registry() -> Iterator[None]:
     register(ExfiltrationAttemptProbe)
     register(RefusalBypassProbe)
     register(MultiTurnPersistenceProbe)
+    register(MultiTurnRefusalErosionProbe)
     yield
     registry.clear()
 
@@ -267,6 +269,40 @@ def test_multi_turn_persistence_succeeds_emits_finding(
     rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
     assert "multi_turn_persistence" in rule_ids
     assert all(r["ruleId"] == "multi_turn_persistence" for r in run["results"])
+
+
+def test_multi_turn_refusal_erosion_succeeds_emits_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        messages = body["messages"]
+        # The codeword lives in the system prompt (messages[0]); default scan_ipi
+        # max_turns is 5, so the final turn is turn 5. messages[0] is the system
+        # turn, so the 1-based turn index is len(messages) // 2.
+        match = _HEX16.search(messages[0]["content"])
+        token = match.group(0) if match else ""
+        turn_index = len(messages) // 2
+        content = f"The codeword is {token}" if turn_index == 5 else "Continuing the scene."
+        return httpx.Response(
+            200,
+            json={"model": "gpt-4o-mini", "choices": [{"message": {"content": content}}]},
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="multi_turn_refusal_erosion")
+
+    assert result.exit_code == 1
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert len(run["results"]) >= 1
+    rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
+    assert "multi_turn_refusal_erosion" in rule_ids
+    assert all(r["ruleId"] == "multi_turn_refusal_erosion" for r in run["results"])
 
 
 def test_refusal_bypass_clean_scan_emits_zero_findings(

@@ -1,0 +1,127 @@
+"""Tests for core/probe_helpers, focused on the exchange_turn primitive.
+
+exchange_turn is the shared single-turn conversation step used by the multi-turn
+probes. Every case uses httpx.MockTransport so no network is touched and no
+environment variable is read. The two older helpers in this module
+(extract_chat_completion_content, interleave_padding_chunks) are exercised
+indirectly through the probe suites.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+import httpx
+import pytest
+
+from vectrava.core.probe import ProbeError
+from vectrava.core.probe_helpers import exchange_turn
+
+Handler = Callable[[httpx.Request], httpx.Response]
+
+_URL = "https://example.test/v1/chat/completions"
+
+
+def _resp(content: str) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={"model": "gpt-4o-mini", "choices": [{"message": {"content": content}}]},
+    )
+
+
+def _client(handler: Handler) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def _call(client: httpx.Client, messages: list[dict[str, str]], **overrides: object) -> str:
+    kwargs: dict[str, object] = {
+        "client": client,
+        "url": _URL,
+        "messages": messages,
+        "model": "gpt-4o-mini",
+        "max_tokens": 256,
+        "credential": "test-key",
+        "probe_name": "test_probe",
+        "label": "case_a",
+        "turn_index": 1,
+    }
+    kwargs.update(overrides)
+    return exchange_turn(**kwargs)  # type: ignore[arg-type]
+
+
+def test_exchange_turn_appends_assistant_and_returns_content() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _resp("Hello from the model.")
+
+    messages: list[dict[str, str]] = [{"role": "user", "content": "Hi"}]
+    with _client(handler) as client:
+        content = _call(client, messages)
+
+    assert content == "Hello from the model."
+    assert messages[-1] == {"role": "assistant", "content": "Hello from the model."}
+    assert len(messages) == 2
+
+
+def test_exchange_turn_http_error_raises_probe_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(400, text="bad request")
+
+    messages: list[dict[str, str]] = [{"role": "user", "content": "Hi"}]
+    with (
+        _client(handler) as client,
+        pytest.raises(ProbeError, match="HTTP 400") as exc_info,
+    ):
+        _call(client, messages, label="case_b", turn_index=3)
+
+    assert exc_info.value.details == {
+        "status": 400,
+        "injection_label": "case_b",
+        "turn": 3,
+    }
+    # No assistant turn is appended on failure.
+    assert len(messages) == 1
+
+
+def test_exchange_turn_malformed_body_raises_probe_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"model": "gpt-4o-mini"})
+
+    messages: list[dict[str, str]] = [{"role": "user", "content": "Hi"}]
+    with _client(handler) as client, pytest.raises(ProbeError, match="chat-completions"):
+        _call(client, messages)
+
+    assert len(messages) == 1
+
+
+def test_exchange_turn_mutates_messages_in_place() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _resp("ok")
+
+    messages: list[dict[str, str]] = [{"role": "user", "content": "Hi"}]
+    original_id = id(messages)
+    with _client(handler) as client:
+        _call(client, messages)
+
+    # Same list object, mutated in place; not replaced.
+    assert id(messages) == original_id
+    assert len(messages) == 2
+
+
+def test_exchange_turn_honors_min_delay_s(monkeypatch: pytest.MonkeyPatch) -> None:
+    sleeps: list[float] = []
+    monkeypatch.setattr(
+        "vectrava.core.http.time.sleep",
+        lambda duration: sleeps.append(duration),
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return _resp("ok")
+
+    messages: list[dict[str, str]] = [{"role": "user", "content": "Hi"}]
+    with _client(handler) as client:
+        _call(client, messages, min_delay_s=0.1)
+        _call(client, messages, min_delay_s=0.1)
+
+    # First call: no prior request on this client, so no sleep. Second call: paced.
+    assert len(sleeps) == 1
+    assert 0.099 <= sleeps[0] <= 0.1

@@ -32,9 +32,8 @@ from __future__ import annotations
 import secrets
 from typing import TYPE_CHECKING, ClassVar
 
-from vectrava.core.http import post_with_retry
 from vectrava.core.probe import Probe, ProbeError
-from vectrava.core.probe_helpers import extract_chat_completion_content
+from vectrava.core.probe_helpers import exchange_turn
 from vectrava.core.registry import register
 from vectrava.core.result import Severity
 
@@ -137,10 +136,6 @@ class MultiTurnPersistenceProbe(Probe):
 
         endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
         url = ctx.target.rstrip("/") + endpoint_path
-        headers = {
-            "Authorization": f"Bearer {credential}",
-            "Content-Type": "application/json",
-        }
 
         findings: list[Finding] = []
         for label, phrasing in INJECTION_PROMPTS:
@@ -149,34 +144,18 @@ class MultiTurnPersistenceProbe(Probe):
             messages: list[dict[str, str]] = [{"role": "user", "content": first_user}]
 
             for turn_index in range(1, max_turns + 1):
-                payload: dict[str, object] = {
-                    "model": model,
-                    "messages": messages,
-                    "max_tokens": PROBE_MAX_TOKENS,
-                }
-                response = post_with_retry(
-                    ctx.http,
-                    url,
-                    json=payload,
-                    headers=headers,
-                    timeout=60.0,
+                content = exchange_turn(
+                    client=ctx.http,
+                    url=url,
+                    messages=messages,
+                    model=model,
+                    max_tokens=PROBE_MAX_TOKENS,
+                    credential=credential,
+                    probe_name=self.name,
+                    label=label,
+                    turn_index=turn_index,
                     min_delay_s=min_delay_s,
                 )
-                if response.status_code >= 400:
-                    raise ProbeError(
-                        f"target returned HTTP {response.status_code}",
-                        probe_name=self.name,
-                        details={
-                            "status": response.status_code,
-                            "injection_label": label,
-                            "turn": turn_index,
-                        },
-                    )
-
-                content = extract_chat_completion_content(
-                    response.json(), f"{label}:turn{turn_index}", self.name
-                )
-                messages.append({"role": "assistant", "content": content})
 
                 # Response index 1 is the turn-1 acknowledgement and is excluded;
                 # a leak counts only when the directive survived past that turn.
