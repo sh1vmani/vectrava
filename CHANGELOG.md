@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `error_amplification`, and `rate_limit_bypass`.
 - `ipi` probes: `direct_override`, `exfiltration_attempt`, `refusal_bypass`,
   `multi_turn_persistence`, and `multi_turn_refusal_erosion`.
-- `rag` probes: `cross_document_injection`, `citation_hijack`, and
-  `cross_source_contradiction`.
+- `rag` probes: `cross_document_injection`, `citation_hijack`,
+  `cross_source_contradiction`, and `prompt_leak_via_retrieval`.
 - Ed25519-signed scope-file authorization gate. Every scan refuses to run until
   the scope file is signed by a key trusted via the `VECTRAVA_TRUSTED_KEYS`
   environment variable, names the target URL, and has not passed its

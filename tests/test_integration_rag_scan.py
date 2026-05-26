@@ -23,6 +23,7 @@ from vectrava.core.registry import register
 from vectrava.rag.probes.citation_hijack import CitationHijackProbe
 from vectrava.rag.probes.cross_document_injection import CrossDocumentInjectionProbe
 from vectrava.rag.probes.cross_source_contradiction import CrossSourceContradictionProbe
+from vectrava.rag.probes.prompt_leak_via_retrieval import PromptLeakViaRetrievalProbe
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -39,6 +40,7 @@ def _registry() -> Iterator[None]:
     register(CrossDocumentInjectionProbe)
     register(CitationHijackProbe)
     register(CrossSourceContradictionProbe)
+    register(PromptLeakViaRetrievalProbe)
     yield
     registry.clear()
 
@@ -133,6 +135,39 @@ def test_injection_succeeds_emits_finding(
     rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
     assert "cross_document_injection" in rule_ids
     assert all(r["ruleId"] == "cross_document_injection" for r in run["results"])
+
+
+def test_prompt_leak_via_retrieval_succeeds_emits_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, valid_scope_file: Path
+) -> None:
+    monkeypatch.setenv("VECTRAVA_TEST_KEY", "dummy-value")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        # The canary rides in the retrieval-template marker in the user message.
+        content = body["messages"][1]["content"]
+        match = _HEX16.search(content)
+        token = match.group(0) if match else ""
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"message": {"content": f"My template marker is {token}"}}],
+            },
+        )
+
+    _patch_client(monkeypatch, handler)
+    out = tmp_path / "out.sarif"
+    result = _invoke(valid_scope_file, out, only="prompt_leak_via_retrieval")
+
+    assert result.exit_code == 1
+    assert out.exists()
+    data: Any = json.loads(out.read_text(encoding="utf-8"))
+    run = data["runs"][0]
+    assert len(run["results"]) >= 1
+    rule_ids = [rule["id"] for rule in run["tool"]["driver"]["rules"]]
+    assert "prompt_leak_via_retrieval" in rule_ids
+    assert all(r["ruleId"] == "prompt_leak_via_retrieval" for r in run["results"])
 
 
 def test_probe_failure_emits_unsuccessful(

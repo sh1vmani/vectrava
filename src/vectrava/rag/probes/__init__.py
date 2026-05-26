@@ -10,3 +10,6 @@ from vectrava.rag.probes import cross_document_injection as _cross_document_inje
 from vectrava.rag.probes import (
     cross_source_contradiction as _cross_source_contradiction,  # noqa: F401
 )
+from vectrava.rag.probes import (
+    prompt_leak_via_retrieval as _prompt_leak_via_retrieval,  # noqa: F401
+)
