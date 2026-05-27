@@ -262,6 +262,7 @@ def _run_scan(
 
         total_tokens = sum(probe.estimated_tokens_per_run for probe in selected)
         cost = _estimated_cost_usd(total_tokens)
+        audit.set_cost_estimate(total_tokens=total_tokens, cost_usd=cost)
 
         if dry_run:
             typer.echo(

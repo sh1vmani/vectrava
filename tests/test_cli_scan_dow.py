@@ -14,7 +14,7 @@ import pytest
 from pydantic import JsonValue
 from typer.testing import CliRunner
 
-from vectrava.cli import app
+from vectrava.cli import _estimated_cost_usd, app
 from vectrava.core import registry
 from vectrava.core.probe import Probe, ProbeContext
 from vectrava.core.result import Finding, Severity
@@ -551,3 +551,91 @@ def test_cost_info_line_is_not_colored(
         ],
     )
     assert "\x1b[" not in _combined(result)
+
+
+def test_audit_log_records_cost_estimate_for_live_scan(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_make_dow_probe("amp", tokens=2000))
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    audit = tmp_path / "audit.jsonl"
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+            "--audit-log",
+            str(audit),
+        ],
+    )
+    assert result.exit_code == 0
+    record: Any = json.loads(_audit_lines(audit)[0])
+    assert record["estimated_tokens"] == 2000
+    assert record["estimated_cost_usd"] == _estimated_cost_usd(2000)
+
+
+def test_audit_log_records_cost_estimate_for_dry_run(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_make_dow_probe("amp", tokens=2000))
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    audit = tmp_path / "audit.jsonl"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--dry-run",
+            "--audit-log",
+            str(audit),
+        ],
+    )
+    assert result.exit_code == 0
+    record: Any = json.loads(_audit_lines(audit)[0])
+    # Dry-run records the estimate: the figure exists and is the single most
+    # useful fact about a dry-run, so it is captured rather than left null.
+    assert record["outcome"] == "dry_run"
+    assert record["estimated_tokens"] == 2000
+    assert record["estimated_cost_usd"] is not None
+
+
+def test_audit_log_records_cost_estimate_for_declined_scan(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_make_dow_probe("big", tokens=200_000))  # above the 150k threshold
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    audit = tmp_path / "audit.jsonl"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--audit-log",
+            str(audit),
+        ],
+        input="n\n",
+    )
+    assert result.exit_code == 0
+    record: Any = json.loads(_audit_lines(audit)[0])
+    # The operator saw the cost and declined; the audit record agrees with the
+    # figure they were shown.
+    assert record["outcome"] == "aborted_by_user"
+    assert record["estimated_tokens"] == 200000
+    assert record["estimated_cost_usd"] is not None

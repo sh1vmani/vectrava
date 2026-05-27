@@ -163,6 +163,49 @@ def test_record_schema_required_fields_present(tmp_path: Path) -> None:
     assert record["runner_pid"] == 4242
 
 
+def test_set_cost_estimate_populates_both_fields(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    writer = AuditWriter(path)
+    writer.preflight()
+    _stamp(writer)
+    writer.set_cost_estimate(total_tokens=12345, cost_usd=0.12)
+    writer.set_outcome("completed_clean", 0)
+    writer.flush()
+
+    record: Any = json.loads(_read_lines(path)[0])
+    assert record["estimated_tokens"] == 12345
+    assert record["estimated_cost_usd"] == 0.12
+
+
+def test_set_cost_estimate_rounds_usd_to_six_decimals(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    writer = AuditWriter(path)
+    writer.preflight()
+    _stamp(writer)
+    noisy = 0.020000000000000004
+    writer.set_cost_estimate(total_tokens=2000, cost_usd=noisy)
+    writer.set_outcome("completed_clean", 0)
+    writer.flush()
+
+    record: Any = json.loads(_read_lines(path)[0])
+    assert record["estimated_cost_usd"] == round(noisy, 6)
+
+
+def test_set_cost_estimate_serializes_usd_as_float(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    writer = AuditWriter(path)
+    writer.preflight()
+    _stamp(writer)
+    writer.set_cost_estimate(total_tokens=2000, cost_usd=0.02)
+    writer.set_outcome("completed_clean", 0)
+    writer.flush()
+
+    record: Any = json.loads(_read_lines(path)[0])
+    # json.dumps(default=str) renders a native float as a JSON number, not a
+    # stringified value; parsing it back yields a float.
+    assert isinstance(record["estimated_cost_usd"], float)
+
+
 def test_credential_fingerprint_stable_for_same_value() -> None:
     assert credential_fingerprint("key-value") == credential_fingerprint("key-value")
     assert len(credential_fingerprint("key-value")) == 12
@@ -260,6 +303,28 @@ def test_flush_chains_after_legacy_record(tmp_path: Path) -> None:
     writer.flush()
 
     new_record: Any = json.loads(_read_lines(path)[1])
+    assert new_record["prev_hash"] == hashlib.sha256(legacy_line.encode("utf-8")).hexdigest()
+
+
+def test_legacy_record_chains_through_cost_field_transition(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    # A pre-change record with neither cost key present.
+    legacy_line = json.dumps(
+        {"schema_version": "1", "outcome": "completed_clean"}, separators=(",", ":")
+    )
+    path.write_text(legacy_line + "\n", encoding="utf-8", newline="\n")
+
+    writer = AuditWriter(path)
+    writer.preflight()
+    _stamp(writer)
+    writer.set_cost_estimate(total_tokens=2000, cost_usd=0.02)
+    writer.set_outcome("completed_clean", 0)
+    writer.flush()
+
+    new_record: Any = json.loads(_read_lines(path)[1])
+    # The new record carries the cost keys; the chain still anchors to the
+    # legacy line's bytes, so a no-cost-field to cost-field transition verifies.
+    assert new_record["estimated_tokens"] == 2000
     assert new_record["prev_hash"] == hashlib.sha256(legacy_line.encode("utf-8")).hexdigest()
 
 

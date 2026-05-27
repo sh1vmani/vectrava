@@ -196,6 +196,11 @@ class AuditRecord:
     findings_summary: dict[str, JsonValue] | None = None
     output_file: str | None = None
     output_file_sha256: str | None = None
+    # Cost estimate at scan invocation; populated by set_cost_estimate in
+    # _run_scan when the cost gate computes them. None on paths that exit before
+    # cost estimation.
+    estimated_tokens: int | None = None
+    estimated_cost_usd: float | None = None
     arguments: list[str] | None = None
     vectrava_version: str | None = None
     runner_host: str | None = None
@@ -311,6 +316,16 @@ class AuditWriter:
         self._record.output_file = str(path)
         if path.exists():
             self._record.output_file_sha256 = file_sha256(path)
+
+    def set_cost_estimate(self, *, total_tokens: int, cost_usd: float) -> None:
+        """Record the token and USD cost estimate computed by the cost gate.
+
+        Keyword-only because two same-typed numeric args are transposition-prone.
+        The USD figure is rounded to six decimals: sub-microcent precision is
+        below USD significance and avoids noisy float reprs in the stored JSON.
+        """
+        self._record.estimated_tokens = total_tokens
+        self._record.estimated_cost_usd = round(cost_usd, 6)
 
     def set_outcome(self, outcome: str, exit_code: int) -> None:
         """Record the terminal outcome string and process exit code."""

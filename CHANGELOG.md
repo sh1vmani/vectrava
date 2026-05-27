@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Audit log records now capture per-invocation cost estimates:
+  `estimated_tokens` and `estimated_cost_usd` fields are populated on every scan
+  path that reaches the cost gate, including dry-run, threshold-confirmed,
+  declined-by-operator, and proceed-to-scan. Legacy logs (records without these
+  fields) continue to verify cleanly under the existing hash chain. The USD
+  value is rounded to six decimals to avoid noisy float reprs in stored JSON
+  without losing meaningful precision.
 - Three probe modules: `dow` (Denial-of-Wallet cost-amplification probes), `ipi`
   (indirect prompt injection probes), and `rag` (retrieval-augmented generation
   boundary probes).
