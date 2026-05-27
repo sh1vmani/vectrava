@@ -39,7 +39,39 @@ class AuthorizationError(Exception):
 
 
 class AuthorizationGate:
-    """Refuses to run a scan without valid scope authorization."""
+    """Refuses to run a scan without valid scope authorization.
+
+    Threat model:
+
+    1. Missing file. A run invoked with no scope file has presented no authorization.
+    The gate refuses rather than treating an absent file as permission, so the
+    fail-closed default holds and nothing runs on the strength of a missing file.
+
+    2. Malformed or invalid file. A scope file that does not parse as JSON or fails
+    model validation cannot be trusted to mean what its bytes appear to say. The gate
+    refuses rather than acting on a partially read or schema-violating authorization,
+    so a corrupt or hand-edited file cannot slip through with unverified fields.
+
+    3. Unsigned. An attacker who can write to the operator's filesystem could otherwise
+    drop a plain JSON scope granting access to arbitrary targets. The gate requires
+    both a signature and a public key, so an unsigned file is rejected before any
+    signer or window is considered.
+
+    4. Untrusted key. An attacker can generate their own Ed25519 keypair and produce a
+    valid self-signed scope. The gate accepts a signature only from a key the operator
+    placed in VECTRAVA_TRUSTED_KEYS, so a signature from an unrecognized key is
+    rejected even though it verifies against its own public key.
+
+    5. Signature mismatch. An attacker who edits a scope that was signed by a trusted
+    key, widening its targets or pushing out its deadline, breaks the signature over
+    the canonical payload. The gate re-verifies the signature against the trusted
+    public key, so any change made after signing is caught.
+
+    6. Expired. A scope signed for a past engagement stays cryptographically valid
+    indefinitely, so a leaked or reused old scope could authorize a scan long after
+    permission lapsed. The gate refuses once the current time passes
+    authorized_until, bounding authorization in time as well as in target set.
+    """
 
     def __init__(self, scope_path: Path) -> None:
         """Store the path to the scope authorization file.
