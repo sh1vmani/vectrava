@@ -82,6 +82,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Scan cost estimates now use a built-in per-model pricing table covering eleven
+  common OpenAI, Claude, and Gemini models; the displayed cost reflects the model
+  passed via `--model` (default `gpt-4o-mini`). Models not in the table fall back
+  to a placeholder rate; the operator sees "fallback rate" in the cost caveat plus
+  a one-line warning on stderr naming the missing model. The displayed cost widens
+  from 2 to 4 decimal places so the figure stays meaningful at the per-1K-token
+  rates of cheaper models. Pricing rates were verified against canonical provider
+  pricing pages on 2026-05-26 and are point-in-time accurate; the table is a
+  convenience for operator cost estimation, not a billing contract. External-config
+  overrides for per-deployment rate customization are planned for a future release.
 - Scan commands now print the estimated token count and USD cost on every
   actual-scan invocation, not only when the threshold prompt fires. The
   confirmation prompt above 150,000 tokens is unchanged. Dry-run output is

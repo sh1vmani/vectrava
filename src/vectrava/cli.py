@@ -30,6 +30,7 @@ from vectrava.config.byok import BYOKConfig
 from vectrava.core import registry
 from vectrava.core.audit import _CHAIN_SENTINEL, AuditError, AuditWriter
 from vectrava.core.auth_gate import AuthorizationError, AuthorizationGate
+from vectrava.core.pricing import USD_PER_1K_TOKENS, lookup_rate
 from vectrava.core.probe import Probe, ProbeContext, ProbeError
 from vectrava.core.result import Finding
 from vectrava.core.signing import (
@@ -54,10 +55,9 @@ if TYPE_CHECKING:
 # estimation, driven by the two multi-turn probes resending the full transcript
 # each turn) with headroom for one more multi-turn probe before re-tripping, so a
 # normal full scan does not prompt while a genuinely-runaway custom selection
-# (150k+) still does. USD_PER_1K_TOKENS is a placeholder default; reading
-# per-model pricing from config is a future enhancement.
+# (150k+) still does. Per-1K-token USD rates come from core.pricing; models not in
+# that table fall back to USD_PER_1K_TOKENS.
 COST_PROMPT_THRESHOLD_TOKENS = 150_000
-USD_PER_1K_TOKENS = 0.01
 VALID_FORMATS = ("sarif", "json", "html")
 DEFAULT_OUTPUT = Path("findings.sarif")
 
@@ -84,9 +84,14 @@ audit_app = typer.Typer(
 app.add_typer(audit_app, name="audit")
 
 
-def _estimated_cost_usd(tokens: int) -> float:
-    """Return the estimated USD cost for a token count at the default rate."""
-    return (tokens / 1000) * USD_PER_1K_TOKENS
+def _estimated_cost_usd(tokens: int, model: str) -> tuple[float, bool]:
+    """Return (cost, is_fallback) for a token count at the model's rate.
+
+    is_fallback is True when the model was not in the pricing table and the
+    placeholder rate was used, so the caller can flag the figure as approximate.
+    """
+    rate, is_fallback = lookup_rate(model)
+    return (tokens / 1000) * rate, is_fallback
 
 
 def _load_module_probes(module: str) -> None:
@@ -260,26 +265,35 @@ def _run_scan(
             audit.set_outcome("invalid_arguments", 2)
             raise
 
+        raw_model = options.get("model")
+        model = raw_model if isinstance(raw_model, str) else "gpt-4o-mini"
         total_tokens = sum(probe.estimated_tokens_per_run for probe in selected)
-        cost = _estimated_cost_usd(total_tokens)
+        cost, is_fallback = _estimated_cost_usd(total_tokens, model)
         audit.set_cost_estimate(total_tokens=total_tokens, cost_usd=cost)
+        if is_fallback:
+            typer.echo(
+                f"warning: model {model!r} not in pricing table; "
+                f"using fallback rate ${USD_PER_1K_TOKENS}/1K tokens",
+                err=True,
+            )
+        caveat = "model rate" if not is_fallback else "fallback rate"
 
         if dry_run:
             typer.echo(
                 f"dry run: {len(selected)} probe(s), up to {total_tokens} tokens, "
-                f"estimated cost ${cost:.2f}. No API calls made."
+                f"estimated cost ${cost:.4f} ({caveat}). No API calls made."
             )
             audit.set_outcome("dry_run", 0)
             raise typer.Exit(code=0)
 
         # Two-tier cost display: always echo the estimate so operators see what a
         # scan will cost; the threshold prompt below is the confirmation tier only.
-        typer.echo(f"Estimated cost: {total_tokens:,} tokens (~${cost:.2f}, placeholder rate)")
+        typer.echo(f"Estimated cost: {total_tokens:,} tokens (~${cost:.4f}, {caveat})")
 
         if total_tokens > COST_PROMPT_THRESHOLD_TOKENS and not yes:
             proceed = typer.confirm(
                 f"This scan will consume up to {total_tokens} tokens "
-                f"(estimated cost ${cost:.2f}). Continue?"
+                f"(estimated cost ${cost:.4f}). Continue?"
             )
             if not proceed:
                 typer.echo("aborted")
