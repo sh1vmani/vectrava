@@ -198,9 +198,12 @@ class AuditRecord:
     output_file_sha256: str | None = None
     # Cost estimate at scan invocation; populated by set_cost_estimate in
     # _run_scan when the cost gate computes them. None on paths that exit before
-    # cost estimation.
+    # cost estimation. cost_rate_source records the provenance of the per-1K rate:
+    # "model" when it came from the pricing table, "fallback" when the placeholder
+    # rate was used. None when cost was never estimated.
     estimated_tokens: int | None = None
     estimated_cost_usd: float | None = None
+    cost_rate_source: str | None = None
     arguments: list[str] | None = None
     vectrava_version: str | None = None
     runner_host: str | None = None
@@ -317,15 +320,19 @@ class AuditWriter:
         if path.exists():
             self._record.output_file_sha256 = file_sha256(path)
 
-    def set_cost_estimate(self, *, total_tokens: int, cost_usd: float) -> None:
+    def set_cost_estimate(self, *, total_tokens: int, cost_usd: float, is_fallback: bool) -> None:
         """Record the token and USD cost estimate computed by the cost gate.
 
         Keyword-only because two same-typed numeric args are transposition-prone.
         The USD figure is rounded to six decimals: sub-microcent precision is
         below USD significance and avoids noisy float reprs in the stored JSON.
+        is_fallback records rate provenance: False maps to cost_rate_source
+        "model" (a per-model rate from the pricing table), True maps to "fallback"
+        (the placeholder rate was used because the model was not in the table).
         """
         self._record.estimated_tokens = total_tokens
         self._record.estimated_cost_usd = round(cost_usd, 6)
+        self._record.cost_rate_source = "fallback" if is_fallback else "model"
 
     def set_outcome(self, outcome: str, exit_code: int) -> None:
         """Record the terminal outcome string and process exit code."""

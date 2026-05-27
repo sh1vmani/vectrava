@@ -739,3 +739,97 @@ def test_audit_field_records_model_rate(
     assert record["estimated_cost_usd"] == round((2000 / 1000) * rate, 6)
     # The recorded cost uses the real model rate, not the old placeholder.
     assert record["estimated_cost_usd"] != round((2000 / 1000) * USD_PER_1K_TOKENS, 6)
+
+
+def test_audit_field_records_cost_rate_source_model_for_known_model(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_make_dow_probe("amp", tokens=2000))
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    audit = tmp_path / "audit.jsonl"
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--model",
+            "gpt-4o-mini",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+            "--audit-log",
+            str(audit),
+        ],
+    )
+    assert result.exit_code == 0
+    record: Any = json.loads(_audit_lines(audit)[0])
+    # gpt-4o-mini is in PRICING_TABLE, so the recorded rate provenance is "model".
+    assert record["cost_rate_source"] == "model"
+
+
+def test_audit_field_records_cost_rate_source_fallback_for_unknown_model(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_make_dow_probe("amp", tokens=2000))
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    audit = tmp_path / "audit.jsonl"
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--model",
+            "some-fake-model",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+            "--audit-log",
+            str(audit),
+        ],
+    )
+    assert result.exit_code == 0
+    record: Any = json.loads(_audit_lines(audit)[0])
+    # some-fake-model is not in PRICING_TABLE, so the placeholder rate was used.
+    assert record["cost_rate_source"] == "fallback"
+
+
+def test_audit_field_records_cost_rate_source_for_dry_run_inherits_known_model(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_make_dow_probe("amp", tokens=2000))
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    audit = tmp_path / "audit.jsonl"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--model",
+            "gpt-4o-mini",
+            "--dry-run",
+            "--audit-log",
+            str(audit),
+        ],
+    )
+    assert result.exit_code == 0
+    record: Any = json.loads(_audit_lines(audit)[0])
+    # Dry-run computes the same rate a live run would, so it carries the real
+    # source ("model"), not a third dry-run value.
+    assert record["outcome"] == "dry_run"
+    assert record["cost_rate_source"] == "model"

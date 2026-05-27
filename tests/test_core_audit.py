@@ -168,7 +168,7 @@ def test_set_cost_estimate_populates_both_fields(tmp_path: Path) -> None:
     writer = AuditWriter(path)
     writer.preflight()
     _stamp(writer)
-    writer.set_cost_estimate(total_tokens=12345, cost_usd=0.12)
+    writer.set_cost_estimate(total_tokens=12345, cost_usd=0.12, is_fallback=False)
     writer.set_outcome("completed_clean", 0)
     writer.flush()
 
@@ -183,7 +183,7 @@ def test_set_cost_estimate_rounds_usd_to_six_decimals(tmp_path: Path) -> None:
     writer.preflight()
     _stamp(writer)
     noisy = 0.020000000000000004
-    writer.set_cost_estimate(total_tokens=2000, cost_usd=noisy)
+    writer.set_cost_estimate(total_tokens=2000, cost_usd=noisy, is_fallback=False)
     writer.set_outcome("completed_clean", 0)
     writer.flush()
 
@@ -196,7 +196,7 @@ def test_set_cost_estimate_serializes_usd_as_float(tmp_path: Path) -> None:
     writer = AuditWriter(path)
     writer.preflight()
     _stamp(writer)
-    writer.set_cost_estimate(total_tokens=2000, cost_usd=0.02)
+    writer.set_cost_estimate(total_tokens=2000, cost_usd=0.02, is_fallback=False)
     writer.set_outcome("completed_clean", 0)
     writer.flush()
 
@@ -204,6 +204,49 @@ def test_set_cost_estimate_serializes_usd_as_float(tmp_path: Path) -> None:
     # json.dumps(default=str) renders a native float as a JSON number, not a
     # stringified value; parsing it back yields a float.
     assert isinstance(record["estimated_cost_usd"], float)
+
+
+def test_set_cost_estimate_records_cost_rate_source_model_when_known_model(tmp_path: Path) -> None:
+    path = tmp_path / "audit.jsonl"
+    writer = AuditWriter(path)
+    writer.preflight()
+    _stamp(writer)
+    writer.set_cost_estimate(total_tokens=1000, cost_usd=0.01, is_fallback=False)
+    writer.set_outcome("completed_clean", 0)
+    writer.flush()
+
+    record: Any = json.loads(_read_lines(path)[0])
+    assert record["cost_rate_source"] == "model"
+
+
+def test_set_cost_estimate_records_cost_rate_source_fallback_when_unknown_model(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "audit.jsonl"
+    writer = AuditWriter(path)
+    writer.preflight()
+    _stamp(writer)
+    writer.set_cost_estimate(total_tokens=1000, cost_usd=0.01, is_fallback=True)
+    writer.set_outcome("completed_clean", 0)
+    writer.flush()
+
+    record: Any = json.loads(_read_lines(path)[0])
+    assert record["cost_rate_source"] == "fallback"
+
+
+def test_cost_rate_source_defaults_to_none_when_set_cost_estimate_never_called(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "audit.jsonl"
+    writer = AuditWriter(path)
+    writer.preflight()
+    _stamp(writer)
+    # An early refusal never reaches cost estimation, so the field stays null.
+    writer.set_outcome("authorization_rejected", 2)
+    writer.flush()
+
+    record: Any = json.loads(_read_lines(path)[0])
+    assert record["cost_rate_source"] is None
 
 
 def test_credential_fingerprint_stable_for_same_value() -> None:
@@ -317,7 +360,7 @@ def test_legacy_record_chains_through_cost_field_transition(tmp_path: Path) -> N
     writer = AuditWriter(path)
     writer.preflight()
     _stamp(writer)
-    writer.set_cost_estimate(total_tokens=2000, cost_usd=0.02)
+    writer.set_cost_estimate(total_tokens=2000, cost_usd=0.02, is_fallback=False)
     writer.set_outcome("completed_clean", 0)
     writer.flush()
 

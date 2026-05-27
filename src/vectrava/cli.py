@@ -269,7 +269,7 @@ def _run_scan(
         model = raw_model if isinstance(raw_model, str) else "gpt-4o-mini"
         total_tokens = sum(probe.estimated_tokens_per_run for probe in selected)
         cost, is_fallback = _estimated_cost_usd(total_tokens, model)
-        audit.set_cost_estimate(total_tokens=total_tokens, cost_usd=cost)
+        audit.set_cost_estimate(total_tokens=total_tokens, cost_usd=cost, is_fallback=is_fallback)
         if is_fallback:
             typer.echo(
                 f"warning: model {model!r} not in pricing table; "
