@@ -950,7 +950,7 @@ State at end of Day 6:
 - Audit-log arc complete: tamper-evidence (hash chain), concurrent-writer safety
   (OS file lock), and per-invocation cost recording
 
-Carry-forward closed this session:
+Carry-forward closed:
 
 - HTML evidence rendering for non-turns keys.
 - Gitleaks false-positive cleared from history.
@@ -960,35 +960,52 @@ Carry-forward closed this session:
 - Audit log cost-field capture.
 - rag module balance (rag went from 4 to the 5-5-5 split).
 - `FILLER_TURNS` lifted to a shared pool when the third multi-turn ipi probe landed.
+- Per-model USD pricing table shipped, replacing the `USD_PER_1K_TOKENS` placeholder
+  as the default rate; the placeholder remains as the fallback for models absent
+  from the table.
+- AuthorizationGate class docstring documents the threat model for all six rejection
+  paths.
+- Audit log records `cost_rate_source` ("model" or "fallback") alongside the existing
+  cost fields.
+- Workflow visibility gates removed from `codeql.yml` and `scorecard.yml` after the
+  repository flipped public.
+- PROGRESS.md reconciliation pass aligned the carry-forward lists with shipped state.
 
 Carry-forward still pending (actionable):
 
-- Per-model USD pricing to replace the `USD_PER_1K_TOKENS` placeholder. Recon
-  completed this session; implementation deferred to the next session, with the
-  resume prompt in the session transcript. Verification during recon found the
-  provider pricing pages have moved (OpenAI now lists the gpt-5.x family, Claude
-  ships Opus 4.7 / Sonnet 4.5 / Haiku 4.5, and Gemini ships 2.5/3.x; gpt-4o-mini
-  and gemini-1.5 are delisted), which blocks the locked model table until the
-  default-model question is settled.
-- `AuthorizationGate` bad-signature path docstring documenting the threat model.
-- Broaden `rate_limit_bypass` detection to 503/529 (depends on operator reports).
-- Future scope-schema rps/burst cap fields (coupled to operator schema evolution).
-- Test-fixture invariant: no hex-token literals; use low-entropy placeholders
-  (for example `leaked-marker-one`) instead. Recorded after the mid-session
-  gitleaks false-positive.
-- NEW: Default-model review. `gpt-4o-mini` is delisted from the OpenAI canonical
-  pricing page as of 2026-05-26; consider migrating the default to a current-tier
-  model.
-- NEW: Audit log `cost_rate_source` field. Forensic refinement to record whether a
-  recorded cost used a real model rate or the fallback; raised during pricing
-  recon.
+- Default-model review: `gpt-4o-mini` is delisted from the canonical OpenAI pricing
+  page. Pick a current-tier default (`gpt-5.4-mini`, `claude-haiku-4-5`, or
+  `gemini-2.5-flash`) and migrate `cli.py`'s default.
+- AuthorizationGate signature-mismatch rejection does not attach the parsed scope to
+  its `AuthorizationError`, so a tampered-but-parseable scope produces an audit record
+  without the claimed signer or window. The other post-parse rejections attach the
+  scope.
+- AuthorizationGate signature-mismatch path has no gate-level behavioral test in
+  `tests/test_auth_gate.py`; covered only at the signing-module level via direct
+  `verify_scope` calls.
+- README shared-flags paragraph omits `--model` and `--yes`. Both flags are real and
+  surface in `vtra scan dow --help`; the paragraph should list them.
+- pyproject Development Status classifier is "2 - Pre-Alpha"; decide whether to bump
+  it now that the repository is public.
+- PROGRESS.md stale-prose cleanup: the `## Current` marker still says "Week 0," the
+  Visibility section still describes a private build flipping at Week 12, the Launch
+  tasks (Week 12) section describes completed tasks, and the Done (Week 0) block
+  claims CodeQL and Scorecard are gated. Coordinated rewrite needs design recon on
+  what replaces "Week N" as the canonical state marker now that the project is
+  post-flip and capability-driven.
+- Standing convention: test fixtures avoid hex-token literals; use low-entropy
+  placeholders (for example `leaked-marker-one`) instead. Recorded after the
+  mid-Day-6 gitleaks false-positive.
 
 Carry-forward still pending (not actionable):
 
-- Week 12 workflow gates (blocked on the public flip).
 - Scope file revocation (future feature).
-- Windows pytest exit-139 in jsonschema's recursive `$ref` descent (transient,
-  re-runs pass, not a code defect).
+- Windows pytest exit-139 in jsonschema's recursive `$ref` descent during SARIF
+  schema validation. Transient, re-runs pass, not a code defect.
+- Broaden `rate_limit_bypass` detection to 503/529 response codes (depends on operator
+  reports of false-negative cases in the wild).
+- Future scope-schema rps/burst cap fields (coupled to operator schema evolution;
+  needs operator-side signal before adding fields).
 
 ### Not done
 
