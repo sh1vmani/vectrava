@@ -14,13 +14,6 @@ permissions:
 jobs:
   analyze:
     name: analyze (${{ matrix.language }})
-    # Uploading results to code scanning requires GitHub Advanced Security on
-    # private repositories, which this project does not have, so analysis fails
-    # on upload while private. Gate on public visibility so it skips cleanly now
-    # and activates at the Week 12 public launch. Remove this gate at launch:
-    # scheduled events do not populate github.event.repository, so leaving it
-    # would skip the weekly run.
-    if: github.event.repository.visibility == 'public'
     runs-on: ubuntu-latest
     permissions:
       security-events: write
