@@ -24,6 +24,7 @@ from vectrava.rag.probes.citation_hijack import CitationHijackProbe
 from vectrava.rag.probes.cross_document_injection import CrossDocumentInjectionProbe
 from vectrava.rag.probes.cross_source_contradiction import CrossSourceContradictionProbe
 from vectrava.rag.probes.prompt_leak_via_retrieval import PromptLeakViaRetrievalProbe
+from vectrava.rag.probes.retrieval_permission_leak import RetrievalPermissionLeakProbe
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -41,6 +42,7 @@ def _registry() -> Iterator[None]:
     register(CitationHijackProbe)
     register(CrossSourceContradictionProbe)
     register(PromptLeakViaRetrievalProbe)
+    register(RetrievalPermissionLeakProbe)
     yield
     registry.clear()
 

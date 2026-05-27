@@ -13,3 +13,6 @@ from vectrava.rag.probes import (
 from vectrava.rag.probes import (
     prompt_leak_via_retrieval as _prompt_leak_via_retrieval,  # noqa: F401
 )
+from vectrava.rag.probes import (
+    retrieval_permission_leak as _retrieval_permission_leak,  # noqa: F401
+)

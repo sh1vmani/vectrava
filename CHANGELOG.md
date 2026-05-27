@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `rag.retrieval_permission_leak` probe (CRITICAL severity) tests whether the
+  target's RAG pipeline enforces per-query permission boundaries on retrieved
+  documents. Three attack framings (direct request, indirect reference, filter
+  bypass) attempt to elicit cross-tenant content; a finding means the model
+  served content from a document whose permission tag did not match the
+  requesting context. Brings rag to five probes (matching dow and ipi at
+  5-5-5); CRITICAL severity now spans two modules.
 - Audit log records now capture per-invocation cost estimates:
   `estimated_tokens` and `estimated_cost_usd` fields are populated on every scan
   path that reaches the cost gate, including dry-run, threshold-confirmed,
