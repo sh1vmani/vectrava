@@ -919,6 +919,77 @@ State at end of Day 5:
 - Workflows: CI green, No Secrets green, CodeQL skipped (private gate), Scorecard
   skipped (private gate)
 
+### Day 6 close (2026-05-26)
+
+Closed the audit-log arc (tamper-evidence, file locking, cost recording), shipped
+two-tier cost display, completed HTML evidence rendering, and rebalanced rag to
+five probes for a 5-5-5 split across the three modules. Seven commits landed. The
+session also completed recon for per-model USD pricing; implementation is deferred
+to the next session, with a resume prompt captured in the session transcript.
+
+Landed commits, in order:
+
+- `7a72747` feat(output): render non-turns evidence keys in HTML reports.
+- History rewrite: a gitleaks false-positive (a 16-hex test literal that tripped
+  the generic-api-key rule) was cleared from history via `reset --soft` plus
+  `commit -C 5f1c93a`, then force-pushed with `--force-with-lease`. The rewritten
+  commit carries low-entropy placeholders from the start.
+- `5382d29` feat(core): hash-chain audit log records for tamper-evidence.
+- `19fa07a` feat(core): serialize audit log flushes via OS file lock.
+- `f7e6e0d` feat(cli): two-tier cost display for scan commands.
+- `4975b2d` feat(core): record per-invocation cost estimate in audit log.
+- `29992b4` feat(rag): probe for retrieval permission leakage.
+
+State at end of Day 6:
+
+- Total commits: 70
+- Tests: 379 passing
+- Probe inventory: dow 5, ipi 5, rag 5 (15 total), a 5-5-5 split
+- CRITICAL probes: 2 (`ipi.exfiltration_attempt`, `rag.retrieval_permission_leak`);
+  CRITICAL severity now spans two modules
+- Audit-log arc complete: tamper-evidence (hash chain), concurrent-writer safety
+  (OS file lock), and per-invocation cost recording
+
+Carry-forward closed this session:
+
+- HTML evidence rendering for non-turns keys.
+- Gitleaks false-positive cleared from history.
+- Tamper-evidence for the audit log via hash chain.
+- Concurrent multi-writer safety for the audit log.
+- Two-tier cost display.
+- Audit log cost-field capture.
+- rag module balance (rag went from 4 to the 5-5-5 split).
+
+Carry-forward still pending (actionable):
+
+- Per-model USD pricing to replace the `USD_PER_1K_TOKENS` placeholder. Recon
+  completed this session; implementation deferred to the next session, with the
+  resume prompt in the session transcript. Verification during recon found the
+  provider pricing pages have moved (OpenAI now lists the gpt-5.x family, Claude
+  ships Opus 4.7 / Sonnet 4.5 / Haiku 4.5, and Gemini ships 2.5/3.x; gpt-4o-mini
+  and gemini-1.5 are delisted), which blocks the locked model table until the
+  default-model question is settled.
+- `AuthorizationGate` bad-signature path docstring documenting the threat model.
+- Broaden `rate_limit_bypass` detection to 503/529 (depends on operator reports).
+- Future scope-schema rps/burst cap fields (coupled to operator schema evolution).
+- Lift `FILLER_TURNS` when a third multi-turn probe lands (dormant trigger).
+- Test-fixture invariant: no hex-token literals; use low-entropy placeholders
+  (for example `leaked-marker-one`) instead. Recorded after the mid-session
+  gitleaks false-positive.
+- NEW: Default-model review. `gpt-4o-mini` is delisted from the OpenAI canonical
+  pricing page as of 2026-05-26; consider migrating the default to a current-tier
+  model.
+- NEW: Audit log `cost_rate_source` field. Forensic refinement to record whether a
+  recorded cost used a real model rate or the fallback; raised during pricing
+  recon.
+
+Carry-forward still pending (not actionable):
+
+- Week 12 workflow gates (blocked on the public flip).
+- Scope file revocation (future feature).
+- Windows pytest exit-139 in jsonschema's recursive `$ref` descent (transient,
+  re-runs pass, not a code defect).
+
 ### Not done
 
 Carry-forward items live in the most recent day-close section's "Carry-forward"
