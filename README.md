@@ -43,6 +43,7 @@ citations, and contradictions between sources.
 | `dow` | `token_amplification` | MEDIUM | Short prompts that elicit large, costly outputs (output-to-input token ratio). |
 | `ipi` | `direct_override` | HIGH | Instruction-override payload smuggled in untrusted data overrides the trusted task. |
 | `ipi` | `exfiltration_attempt` | CRITICAL | Injected user message extracts confidential content from the system prompt. |
+| `ipi` | `multi_turn_buried_instruction` | HIGH | Tests whether an instruction planted once in the first user turn and left unreinforced still binds the model when a later turn springs it after several benign filler turns. |
 | `ipi` | `multi_turn_persistence` | HIGH | Tests whether a directive injected in the first user turn persists across later turns, leaking a canary token into replies after the injection turn. |
 | `ipi` | `multi_turn_refusal_erosion` | HIGH | Tests whether a benign frame built over several turns erodes the target's refusal posture, leaking a protected system-prompt codeword on the final turn. |
 | `ipi` | `refusal_bypass` | HIGH | Jailbreak framings (hypothetical, educational pretext, roleplay) talk the model past its refusal. |

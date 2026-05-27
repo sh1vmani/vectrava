@@ -959,6 +959,7 @@ Carry-forward closed this session:
 - Two-tier cost display.
 - Audit log cost-field capture.
 - rag module balance (rag went from 4 to the 5-5-5 split).
+- `FILLER_TURNS` lifted to a shared pool when the third multi-turn ipi probe landed.
 
 Carry-forward still pending (actionable):
 
@@ -972,7 +973,6 @@ Carry-forward still pending (actionable):
 - `AuthorizationGate` bad-signature path docstring documenting the threat model.
 - Broaden `rate_limit_bypass` detection to 503/529 (depends on operator reports).
 - Future scope-schema rps/burst cap fields (coupled to operator schema evolution).
-- Lift `FILLER_TURNS` when a third multi-turn probe lands (dormant trigger).
 - Test-fixture invariant: no hex-token literals; use low-entropy placeholders
   (for example `leaked-marker-one`) instead. Recorded after the mid-session
   gitleaks false-positive.

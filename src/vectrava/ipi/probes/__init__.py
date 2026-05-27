@@ -7,6 +7,9 @@ import.
 
 from vectrava.ipi.probes import direct_override as _direct_override  # noqa: F401
 from vectrava.ipi.probes import exfiltration_attempt as _exfiltration_attempt  # noqa: F401
+from vectrava.ipi.probes import (
+    multi_turn_buried_instruction as _multi_turn_buried_instruction,  # noqa: F401
+)
 from vectrava.ipi.probes import multi_turn_persistence as _multi_turn_persistence  # noqa: F401
 from vectrava.ipi.probes import (
     multi_turn_refusal_erosion as _multi_turn_refusal_erosion,  # noqa: F401
