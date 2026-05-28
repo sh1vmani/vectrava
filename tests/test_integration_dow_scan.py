@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 runner = CliRunner()
 Handler = Callable[[httpx.Request], httpx.Response]
 
+_PINNED_MODEL = "gpt-5.4-nano"
+
 
 @pytest.fixture(autouse=True)
 def _registry() -> Iterator[None]:
@@ -65,6 +67,8 @@ def _invoke(scope: Path, out: Path, fmt: str = "sarif", only: str = "token_ampli
             "https://example.test",
             "--api-key-env",
             "VECTRAVA_TEST_KEY",
+            "--model",
+            _PINNED_MODEL,
             "--only",
             only,
             "--yes",
@@ -346,7 +350,7 @@ def test_scan_dow_error_amplification_finds_when_usage_in_error(
         body = json.loads(request.content)
         # Only the oversized_prompt shape (operator model, string content) returns
         # usage on its rejection; the other shapes reject without a usage block.
-        oversized = body.get("model") == "gpt-5.4-mini" and isinstance(
+        oversized = body.get("model") == _PINNED_MODEL and isinstance(
             body["messages"][0]["content"], str
         )
         if oversized:

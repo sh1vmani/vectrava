@@ -33,6 +33,7 @@ runner = CliRunner()
 Handler = Callable[[httpx.Request], httpx.Response]
 
 _HEX16 = re.compile(r"[0-9a-f]{16}")
+_PINNED_MODEL = "gpt-5.4-nano"
 
 
 @pytest.fixture(autouse=True)
@@ -68,6 +69,8 @@ def _invoke(scope: Path, out: Path, fmt: str = "sarif", only: str = "direct_over
             "https://example.test",
             "--api-key-env",
             "VECTRAVA_TEST_KEY",
+            "--model",
+            _PINNED_MODEL,
             "--only",
             only,
             "--format",
@@ -403,4 +406,4 @@ def test_cost_info_line_prints_for_ipi_scan(
     result = _invoke(valid_scope_file, out, only="direct_override")
 
     assert result.exit_code == 0
-    assert "Estimated cost: 900 tokens (~$0.0007, model rate)" in result.stdout
+    assert "Estimated cost: 900 tokens (~$0.0002, model rate)" in result.stdout

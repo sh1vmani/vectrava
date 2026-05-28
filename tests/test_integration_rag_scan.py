@@ -33,6 +33,7 @@ runner = CliRunner()
 Handler = Callable[[httpx.Request], httpx.Response]
 
 _HEX16 = re.compile(r"[0-9a-f]{16}")
+_PINNED_MODEL = "gpt-5.4-nano"
 
 
 @pytest.fixture(autouse=True)
@@ -70,6 +71,8 @@ def _invoke(
             "https://example.test",
             "--api-key-env",
             "VECTRAVA_TEST_KEY",
+            "--model",
+            _PINNED_MODEL,
             "--only",
             only,
             "--format",
@@ -220,6 +223,8 @@ def test_num_sources_flag_plumbs_through_to_probe(
             "https://example.test",
             "--api-key-env",
             "VECTRAVA_TEST_KEY",
+            "--model",
+            _PINNED_MODEL,
             "--only",
             "cross_document_injection",
             "--num-sources",
@@ -412,4 +417,4 @@ def test_cost_info_line_prints_for_rag_scan(
     result = _invoke(valid_scope_file, out, only="cross_document_injection")
 
     assert result.exit_code == 0
-    assert "Estimated cost: 1,800 tokens (~$0.0014, model rate)" in result.stdout
+    assert "Estimated cost: 1,800 tokens (~$0.0004, model rate)" in result.stdout
