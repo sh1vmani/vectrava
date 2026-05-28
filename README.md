@@ -115,7 +115,7 @@ Step 6: Run a scan.
 export OLLAMA_KEY=ollama
 uv run vtra scan dow \
   --scope ./scope.json \
-  --target http://localhost:11434/v1/chat/completions \
+  --target http://localhost:11434 \
   --model llama3.2:1b
 ```
 
@@ -154,7 +154,7 @@ and edit it: set `targets` to URLs in your authorized scope and
 
 ```json
 {
-  "targets": ["https://api.openai.com/v1/chat/completions"],
+  "targets": ["https://api.openai.com"],
   "authorized_until": "2026-12-31T23:59:59Z",
   "signed_by": "Your Name"
 }
@@ -177,7 +177,7 @@ Run a scan.
 
 ```sh
 uv run vtra scan dow --scope ./scope.signed.json \
-  --target https://api.openai.com/v1/chat/completions \
+  --target https://api.openai.com \
   --api-key-env OPENAI_API_KEY
 ```
 

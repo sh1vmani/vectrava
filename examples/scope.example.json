@@ -1,6 +1,6 @@
 {
   "targets": [
-    "https://api.openai.com/v1/chat/completions"
+    "https://api.openai.com"
   ],
   "authorized_until": "2099-12-31T23:59:59Z",
   "signed_by": "Your Name"

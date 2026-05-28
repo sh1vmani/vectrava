@@ -1,6 +1,6 @@
 {
   "targets": [
-    "http://localhost:11434/v1/chat/completions"
+    "http://localhost:11434"
   ],
   "authorized_until": "2099-12-31T23:59:59Z",
   "signed_by": "Your Name"

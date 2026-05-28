@@ -27,6 +27,7 @@ import typer
 
 from vectrava import __version__
 from vectrava.config.byok import BYOKConfig
+from vectrava.config.scope import validate_base_target
 from vectrava.core import registry
 from vectrava.core.audit import _CHAIN_SENTINEL, AuditError, AuditWriter
 from vectrava.core.auth_gate import AuthorizationError, AuthorizationGate
@@ -241,6 +242,12 @@ def _run_scan(
         if scope is None or target is None:
             audit.set_outcome("invalid_arguments", 2)
             raise _fail("error: --scope and --target are required for a scan run")
+
+        try:
+            validate_base_target(target)
+        except ValueError as exc:
+            audit.set_outcome("invalid_arguments", 2)
+            raise _fail(f"error: {exc}") from exc
 
         try:
             scope_file = AuthorizationGate(scope).check()

@@ -23,9 +23,9 @@ variable.
 ## scope.example.ollama.json
 
 The Ollama variant of the template, pre-targeted at a local Ollama
-server (`http://localhost:11434/v1/chat/completions`) so the Ollama
-quickstart in the top-level README is copy-pasteable without editing
-the target. Sign it the same way:
+server (`http://localhost:11434`) so the Ollama quickstart in the
+top-level README is copy-pasteable without editing the target. Sign it
+the same way:
 
 ```sh
 cp examples/scope.example.ollama.json ./scope.json
