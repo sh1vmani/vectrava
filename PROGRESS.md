@@ -970,12 +970,14 @@ Carry-forward closed:
 - Workflow visibility gates removed from `codeql.yml` and `scorecard.yml` after the
   repository flipped public.
 - PROGRESS.md reconciliation pass aligned the carry-forward lists with shipped state.
+- Default model migrated from `gpt-4o-mini` (delisted) to `gpt-5.4-mini`, with
+  `DEFAULT_MODEL` centralized in `pricing.py` and consumed by `cli.py` and all 11
+  probe fallbacks. An Ollama quickstart, a sample Ollama-targeted scope template, and
+  a retitled paid-API quickstart were added so vectrava can be evaluated without
+  paying any API costs.
 
 Carry-forward still pending (actionable):
 
-- Default-model review: `gpt-4o-mini` is delisted from the canonical OpenAI pricing
-  page. Pick a current-tier default (`gpt-5.4-mini`, `claude-haiku-4-5`, or
-  `gemini-2.5-flash`) and migrate `cli.py`'s default.
 - AuthorizationGate signature-mismatch rejection does not attach the parsed scope to
   its `AuthorizationError`, so a tampered-but-parseable scope produces an audit record
   without the claimed signer or window. The other post-parse rejections attach the
@@ -996,6 +998,17 @@ Carry-forward still pending (actionable):
 - Standing convention: test fixtures avoid hex-token literals; use low-entropy
   placeholders (for example `leaked-marker-one`) instead. Recorded after the
   mid-Day-6 gitleaks false-positive.
+- Default-endpoint review: vectrava ships an OpenAI-shaped default endpoint
+  (`/v1/chat/completions`). Revisiting whether that is the right default would unlock
+  non-OpenAI default-model options like `gemini-2.5-flash-lite` ($0.0001/1K, the
+  cheapest currently-priced option).
+- Integration-test hardening: the integration tests in
+  `tests/test_integration_{dow,ipi,rag}_scan.py` rely on the default model rather than
+  passing `--model` explicitly. Decoupling them would make a future default change a
+  one-line constant flip with zero test fallout.
+- Ollama autodetection: when `--target` is omitted, probe `localhost:11434` and use it
+  as the default endpoint if reachable. Makes the Ollama quickstart shorter and gives
+  vectrava a working zero-config first-run experience when Ollama is installed.
 
 Carry-forward still pending (not actionable):
 

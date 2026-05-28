@@ -30,6 +30,11 @@ from __future__ import annotations
 # the historical default before per-model pricing existed.
 USD_PER_1K_TOKENS = 0.01
 
+# Default model identifier used by the CLI and probe fallbacks when --model is
+# not passed. Centralized so the 15+ sites that previously hardcoded the default
+# share one source of truth; a future change is a one-line update here.
+DEFAULT_MODEL: str = "gpt-5.4-mini"
+
 # Model id -> per-1K input-token rate in USD. Keys are exact API id strings, not
 # display names. Each block records its canonical source and fetch date so future
 # updaters know what was verified and when.

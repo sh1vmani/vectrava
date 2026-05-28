@@ -412,4 +412,4 @@ def test_cost_info_line_prints_for_rag_scan(
     result = _invoke(valid_scope_file, out, only="cross_document_injection")
 
     assert result.exit_code == 0
-    assert "Estimated cost: 1,800 tokens (~$0.0003, model rate)" in result.stdout
+    assert "Estimated cost: 1,800 tokens (~$0.0014, model rate)" in result.stdout

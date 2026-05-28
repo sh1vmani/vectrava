@@ -403,4 +403,4 @@ def test_cost_info_line_prints_for_ipi_scan(
     result = _invoke(valid_scope_file, out, only="direct_override")
 
     assert result.exit_code == 0
-    assert "Estimated cost: 900 tokens (~$0.0001, model rate)" in result.stdout
+    assert "Estimated cost: 900 tokens (~$0.0007, model rate)" in result.stdout

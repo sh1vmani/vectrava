@@ -346,7 +346,7 @@ def test_scan_dow_error_amplification_finds_when_usage_in_error(
         body = json.loads(request.content)
         # Only the oversized_prompt shape (operator model, string content) returns
         # usage on its rejection; the other shapes reject without a usage block.
-        oversized = body.get("model") == "gpt-4o-mini" and isinstance(
+        oversized = body.get("model") == "gpt-5.4-mini" and isinstance(
             body["messages"][0]["content"], str
         )
         if oversized:

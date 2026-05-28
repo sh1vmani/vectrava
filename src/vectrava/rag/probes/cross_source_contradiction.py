@@ -26,6 +26,7 @@ import secrets
 from typing import TYPE_CHECKING, ClassVar
 
 from vectrava.core.http import post_with_retry
+from vectrava.core.pricing import DEFAULT_MODEL
 from vectrava.core.probe import Probe, ProbeError
 from vectrava.core.probe_helpers import (
     extract_chat_completion_content,
@@ -120,7 +121,7 @@ class CrossSourceContradictionProbe(Probe):
         credential = ctx.credentials
 
         raw_model = ctx.options.get("model")
-        model = raw_model if isinstance(raw_model, str) else "gpt-4o-mini"
+        model = raw_model if isinstance(raw_model, str) else DEFAULT_MODEL
         num_sources_raw = ctx.options.get("num_sources", 3)
         num_sources = int(num_sources_raw) if isinstance(num_sources_raw, int) else 3
         raw_max_rps = ctx.options.get("max_rps")

@@ -70,7 +70,66 @@ cd vectrava
 uv sync
 ```
 
-## Quickstart
+## Quickstart with Ollama (no paid API required)
+
+The fastest way to try vectrava end to end, against a local model, with no paid
+API account. Ollama serves an OpenAI-compatible endpoint on localhost, so the
+same scan flow works against it.
+
+Step 1: Install Ollama. See [ollama.com](https://ollama.com) for the current
+install command for your platform.
+
+Step 2: Pull a small model.
+
+```sh
+ollama pull llama3.2:1b
+```
+
+Step 3: Generate an Ed25519 signing keypair. This writes `vectrava_ed25519`
+(private) and `vectrava_ed25519.pub` (public) into the current directory.
+
+```sh
+uv run vtra scope new-key --out-dir .
+```
+
+Step 4: Trust the public key. `VECTRAVA_TRUSTED_KEYS` is a comma-separated list
+of base64url public keys; the gate trusts nothing by default.
+
+```sh
+export VECTRAVA_TRUSTED_KEYS="$(cat ./vectrava_ed25519.pub)"
+```
+
+Step 5: Sign the Ollama scope template. It already targets the local Ollama
+endpoint, so it runs without edits; adjust `signed_by` if you like. Signing
+overwrites the file in place with the signed version.
+
+```sh
+cp examples/scope.example.ollama.json ./scope.json
+uv run vtra scope sign ./scope.json --key ./vectrava_ed25519
+```
+
+Step 6: Run a scan.
+
+```sh
+export OLLAMA_KEY=ollama
+uv run vtra scan dow \
+  --scope ./scope.json \
+  --target http://localhost:11434/v1/chat/completions \
+  --model llama3.2:1b
+```
+
+A note on `OLLAMA_KEY`: vectrava's authorization gate requires a credential
+environment variable per its BYOK design, so the tool refuses to run without an
+explicit key declaration. Ollama itself ignores the Bearer header vectrava
+sends, so any non-empty placeholder works for local inference.
+
+A note on the pricing warning: the tool prints a one-time warning that
+`llama3.2:1b` is not in its per-model pricing table, and falls back to a
+placeholder rate. This is expected for local models, and the resulting USD cost
+figures in the dry-run and audit log are not meaningful for local inference,
+where the actual cost is zero.
+
+## Quickstart with a paid API
 
 End to end, from a fresh checkout to a scan.
 

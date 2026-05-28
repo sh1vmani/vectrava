@@ -30,7 +30,7 @@ from vectrava.config.byok import BYOKConfig
 from vectrava.core import registry
 from vectrava.core.audit import _CHAIN_SENTINEL, AuditError, AuditWriter
 from vectrava.core.auth_gate import AuthorizationError, AuthorizationGate
-from vectrava.core.pricing import USD_PER_1K_TOKENS, lookup_rate
+from vectrava.core.pricing import DEFAULT_MODEL, USD_PER_1K_TOKENS, lookup_rate
 from vectrava.core.probe import Probe, ProbeContext, ProbeError
 from vectrava.core.result import Finding
 from vectrava.core.signing import (
@@ -266,7 +266,7 @@ def _run_scan(
             raise
 
         raw_model = options.get("model")
-        model = raw_model if isinstance(raw_model, str) else "gpt-4o-mini"
+        model = raw_model if isinstance(raw_model, str) else DEFAULT_MODEL
         total_tokens = sum(probe.estimated_tokens_per_run for probe in selected)
         cost, is_fallback = _estimated_cost_usd(total_tokens, model)
         audit.set_cost_estimate(total_tokens=total_tokens, cost_usd=cost, is_fallback=is_fallback)
@@ -433,9 +433,12 @@ def scan_dow(
         str,
         typer.Option(
             "--model",
-            help="Model identifier sent in the chat-completions request body (e.g. gpt-4o-mini).",
+            help=(
+                "Model identifier sent in the chat-completions request body "
+                f"(e.g. {DEFAULT_MODEL})."
+            ),
         ),
-    ] = "gpt-4o-mini",
+    ] = DEFAULT_MODEL,
     max_requests_per_second: Annotated[
         float,
         typer.Option(
@@ -535,9 +538,12 @@ def scan_ipi(
         str,
         typer.Option(
             "--model",
-            help="Model identifier sent in the chat-completions request body (e.g. gpt-4o-mini).",
+            help=(
+                "Model identifier sent in the chat-completions request body "
+                f"(e.g. {DEFAULT_MODEL})."
+            ),
         ),
-    ] = "gpt-4o-mini",
+    ] = DEFAULT_MODEL,
     max_turns: Annotated[
         int,
         typer.Option(
@@ -646,9 +652,12 @@ def scan_rag(
         str,
         typer.Option(
             "--model",
-            help="Model identifier sent in the chat-completions request body (e.g. gpt-4o-mini).",
+            help=(
+                "Model identifier sent in the chat-completions request body "
+                f"(e.g. {DEFAULT_MODEL})."
+            ),
         ),
-    ] = "gpt-4o-mini",
+    ] = DEFAULT_MODEL,
     num_sources: Annotated[
         int,
         typer.Option(

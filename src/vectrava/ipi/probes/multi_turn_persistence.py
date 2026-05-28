@@ -32,6 +32,7 @@ from __future__ import annotations
 import secrets
 from typing import TYPE_CHECKING, ClassVar
 
+from vectrava.core.pricing import DEFAULT_MODEL
 from vectrava.core.probe import Probe, ProbeError
 from vectrava.core.probe_helpers import GENERIC_FILLER_TURNS as FILLER_TURNS
 from vectrava.core.probe_helpers import exchange_turn
@@ -114,7 +115,7 @@ class MultiTurnPersistenceProbe(Probe):
         credential = ctx.credentials
 
         raw_model = ctx.options.get("model")
-        model = raw_model if isinstance(raw_model, str) else "gpt-4o-mini"
+        model = raw_model if isinstance(raw_model, str) else DEFAULT_MODEL
 
         raw_max_turns = ctx.options.get("max_turns", _DEFAULT_MAX_TURNS)
         if isinstance(raw_max_turns, int) and not isinstance(raw_max_turns, bool):

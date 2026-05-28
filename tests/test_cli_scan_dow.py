@@ -131,7 +131,7 @@ def test_dry_run_prints_estimate(tmp_path: Path, signed_scope_factory: Callable[
     assert result.exit_code == 0
     text = _combined(result)
     assert "2000" in text
-    assert "0.0003" in text
+    assert "0.0015" in text
 
 
 def test_padding_threshold_default_reaches_probe(
@@ -442,7 +442,7 @@ def test_cost_info_line_prints_below_threshold(
     assert result.exit_code == 0
     text = _combined(result)
     assert "Estimated cost: 2,000 tokens" in text
-    assert "(~$0.0003, model rate)" in text
+    assert "(~$0.0015, model rate)" in text
 
 
 def test_cost_info_line_prints_above_threshold_then_confirm(
@@ -469,7 +469,7 @@ def test_cost_info_line_prints_above_threshold_then_confirm(
     )
     text = _combined(result)
     assert "Estimated cost: 200,000 tokens" in text
-    assert "(~$0.0300, model rate)" in text
+    assert "(~$0.1500, model rate)" in text
     # The prompt's wording is unchanged and does not use thousands-separators.
     assert "This scan will consume up to 200000 tokens" in text
     assert result.exit_code in (0, 1)  # confirmed; 0 (no findings) here
@@ -496,7 +496,7 @@ def test_cost_info_line_format_matches_dry_run_numbers(
 ) -> None:
     # The info line uses thousands-separators for legibility at high token counts;
     # the dry-run line does not. Both paths agree on the numbers (2000 tokens,
-    # $0.0003) and the rate source (model rate); only the token formatting differs.
+    # $0.0015) and the rate source (model rate); only the token formatting differs.
     registry.register(_make_dow_probe("amp", tokens=2000))
     scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
     out = tmp_path / "out.json"
@@ -517,7 +517,7 @@ def test_cost_info_line_format_matches_dry_run_numbers(
     )
     actual_text = _combined(actual)
     assert "2,000" in actual_text  # info line: comma-separated
-    assert "0.0003" in actual_text
+    assert "0.0015" in actual_text
 
     dry = runner.invoke(
         app,
@@ -525,7 +525,7 @@ def test_cost_info_line_format_matches_dry_run_numbers(
     )
     dry_text = _combined(dry)
     assert "2000" in dry_text  # dry-run line: no comma
-    assert "0.0003" in dry_text
+    assert "0.0015" in dry_text
 
 
 def test_cost_info_line_is_not_colored(
@@ -581,8 +581,8 @@ def test_audit_log_records_cost_estimate_for_live_scan(
     assert result.exit_code == 0
     record: Any = json.loads(_audit_lines(audit)[0])
     assert record["estimated_tokens"] == 2000
-    # Default model is gpt-4o-mini; the audit field rounds to 6 decimals.
-    expected_cost, _ = _estimated_cost_usd(2000, "gpt-4o-mini")
+    # Default model is gpt-5.4-mini; the audit field rounds to 6 decimals.
+    expected_cost, _ = _estimated_cost_usd(2000, "gpt-5.4-mini")
     assert record["estimated_cost_usd"] == round(expected_cost, 6)
 
 
