@@ -1,10 +1,12 @@
 # Progress
 
-A 12-week build plan tracks vectrava from scaffold to public launch.
+## Current state
 
-## Current marker: Week 0
-
-Scaffold and repository foundation.
+vectrava is feature-shaped. The three scanner modules are live, the three
+output writers are live, the authorization gate is signed-scope with audit
+logging. The day-close sections below carry the running record. For shipped
+capability, see the most recent "State at end of Day N" block. For what is
+open, see the most recent "Carry-forward still pending" block.
 
 ### Done
 
@@ -18,8 +20,8 @@ Scaffold and repository foundation.
 - CI matrix across Python 3.11, 3.12, 3.13 on Linux, macOS, and Windows.
 - Supply-chain and quality workflows: CodeQL, OpenSSF Scorecard, DCO check,
   secret scanning. Scorecard is pinned to a specific release tag (v2.4.3).
-  CodeQL and Scorecard are gated to run only when the repository is public,
-  because both require GitHub Advanced Security to run on a private repo.
+  Both run on every push to main and on a weekly schedule; CodeQL also runs
+  on pull requests.
 - Standard repository files: README, LICENSE (Apache 2.0), CONTRIBUTING,
   CODE_OF_CONDUCT, SECURITY, MAINTAINERS.
 - Expanded allowed Conventional Commits scopes to include workflow-name scopes.
@@ -1037,21 +1039,11 @@ bullets to avoid two sources of truth. See the current Day close above.
 
 ## Review checkpoints
 
-- **Week 2:** tooling review. Confirm the CI matrix, linting, typing, and the
-  authorization gate hold up as the first probes land.
-- **Week 6:** tooling review. Reassess dependencies, output formats, and test
-  coverage at the halfway point.
+Periodically reassess the CI matrix, linting, typing, and the authorization
+gate as the probe catalog grows. Revisit dependencies, output formats, and
+test coverage when the catalog or the writer set changes shape.
 
 ## Visibility
 
-The repository is private during the build and flips to public at the Week 12
-launch.
-
-### Launch tasks (Week 12)
-
-- Remove the `if: github.event.repository.visibility == 'public'` gate from
-  `.github/workflows/codeql.yml` and `.github/workflows/scorecard.yml`. The gate
-  exists only to skip these jobs while the repo is private, since both require
-  GitHub Advanced Security to run on a private repo. Once public the gate is
-  unnecessary, and leaving it would skip the weekly scheduled Scorecard run
-  because scheduled events do not populate `github.event.repository`.
+The repository is public. Supply-chain and quality workflows run on pushes,
+pull requests, and a weekly schedule depending on the workflow.

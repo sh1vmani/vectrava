@@ -62,8 +62,7 @@ them, stop and raise it rather than working around it.
   not add a scan path that bypasses it.
 - Defensive posture. vectrava finds and reports failure modes so they can be
   fixed. It does not weaponize. Features ship authorization-gated by default.
-- Visibility. The repository is private during the build and flips to public at
-  the Week 12 launch. Do not change repository visibility.
+- Visibility. The repository is public. Do not change repository visibility.
 
 ## Commit scopes
 
@@ -85,7 +84,7 @@ specific workflow.
 
 ## Where to find more
 
-- `PROGRESS.md`: current week marker and what is done.
+- `PROGRESS.md`: current state and the running day-close record.
 - `CONTRIBUTING.md`: contributor workflow, required checks, and sign-off.
 - `SECURITY.md`: how to report a vulnerability.
 - `MAINTAINERS.md`: who runs the project.
