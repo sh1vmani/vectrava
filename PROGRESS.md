@@ -989,13 +989,16 @@ Carry-forward closed:
   `rate_limit_bypass`; the two probes test distinct guardrails (temporal vs
   concurrent), and a target can pass one and fail the other. dow catalog now 6 probes,
   total 17, split 6-6-5.
+- pyproject Development Status classifier bumped from "2 - Pre-Alpha" to "3 - Alpha"
+  to reflect the project's actual state: feature-shaped with 17 probes, audit-log
+  forensics, signed-scope authorization, and a documented quickstart, with breaking
+  changes still possible as outstanding carry-forwards (default-endpoint review,
+  integration-test hardening) land.
 
 Carry-forward still pending (actionable):
 
 - README shared-flags paragraph omits `--model` and `--yes`. Both flags are real and
   surface in `vtra scan dow --help`; the paragraph should list them.
-- pyproject Development Status classifier is "2 - Pre-Alpha"; decide whether to bump
-  it now that the repository is public.
 - PROGRESS.md stale-prose cleanup: the `## Current` marker still says "Week 0," the
   Visibility section still describes a private build flipping at Week 12, the Launch
   tasks (Week 12) section describes completed tasks, and the Done (Week 0) block

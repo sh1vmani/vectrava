@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Shivamani Vastrala", email = "shivamaniuni1@gmail.com" }]
 keywords = ["security", "llm", "ai", "scanner", "prompt-injection", "rag"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "Topic :: Security",
