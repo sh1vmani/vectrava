@@ -36,6 +36,7 @@ citations, and contradictions between sources.
 
 | Module | Probe | Severity | Attack class |
 | ------ | ----- | -------- | ------------ |
+| `dow` | `concurrency_amplification` | MEDIUM | Dispatches a small burst of identical requests concurrently on one credential and flags the endpoint when most return 200 and none return HTTP 429, indicating absent concurrency-level rate limiting. |
 | `dow` | `error_amplification` | MEDIUM | Failed requests still report token usage, indicating billing on validation-rejected inputs. |
 | `dow` | `model_substitution` | MEDIUM | Target silently serves a different model than the one requested. |
 | `dow` | `output_padding` | MEDIUM | Short-answer prompts whose responses are padded beyond their natural length. |

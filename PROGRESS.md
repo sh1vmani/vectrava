@@ -983,6 +983,12 @@ Carry-forward closed:
   tests (`test_gate_rejects_signature_mismatch` and
   `test_scope_present_on_signature_mismatch_rejection`) cover the rejection and the
   scope attachment.
+- New dow probe `concurrency_amplification` added, testing whether a target serves N
+  parallel requests on a single credential without triggering its rate-limit
+  guardrails. Severity MEDIUM, matching the dow catalog convention. Sibling to
+  `rate_limit_bypass`; the two probes test distinct guardrails (temporal vs
+  concurrent), and a target can pass one and fail the other. dow catalog now 6 probes,
+  total 17, split 6-6-5.
 
 Carry-forward still pending (actionable):
 

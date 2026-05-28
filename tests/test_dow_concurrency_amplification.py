@@ -1,0 +1,266 @@
+"""Tests for the concurrency_amplification dow probe.
+
+Every case uses httpx.MockTransport so no network is touched and no environment
+variable is read. The probe is exercised directly through `run` with a
+hand-built ProbeContext. The mock handler is invoked concurrently across N
+worker threads, so any test that mutates shared state (e.g. a call counter)
+guards the mutation with a threading.Lock.
+"""
+
+from __future__ import annotations
+
+import threading
+import time
+from collections.abc import Callable, Iterator, Mapping
+from datetime import UTC, datetime, timedelta
+
+import httpx
+import pytest
+import structlog
+from pydantic import JsonValue
+
+from vectrava.config.scope import ScopeFile
+from vectrava.core import registry
+from vectrava.core.probe import ProbeContext, ProbeError
+from vectrava.core.result import Severity
+from vectrava.dow.probes.concurrency_amplification import (
+    _CONCURRENCY,
+    ConcurrencyAmplificationProbe,
+)
+
+Handler = Callable[[httpx.Request], httpx.Response]
+
+
+@pytest.fixture(autouse=True)
+def _clean_registry() -> Iterator[None]:
+    registry.clear()
+    yield
+    registry.clear()
+
+
+def _scope() -> ScopeFile:
+    return ScopeFile(
+        targets=["https://example.test"],
+        authorized_until=datetime.now(UTC) + timedelta(days=1),
+        signed_by="Shivamani Vastrala",
+    )
+
+
+def _ctx(
+    client: httpx.Client,
+    *,
+    target: str = "https://example.test",
+    endpoint: str | None = None,
+    credentials: str | None = "test-key",
+    options: Mapping[str, JsonValue] | None = None,
+) -> ProbeContext:
+    return ProbeContext(
+        target=target,
+        endpoint=endpoint,
+        credentials=credentials,
+        scope=_scope(),
+        http=client,
+        logger=structlog.get_logger(),
+        options=options if options is not None else {"model": "gpt-4o-mini"},
+    )
+
+
+def _client(handler: Handler) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_all_succeed_emits_finding() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler) as client:
+        findings = ConcurrencyAmplificationProbe().run(_ctx(client))
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.level == Severity.MEDIUM
+    assert finding.rule_id == "concurrency_amplification"
+    assert finding.probe == "dow.concurrency_amplification"
+    assert finding.evidence["concurrency"] == _CONCURRENCY
+    assert finding.evidence["status_counts"] == {"200": _CONCURRENCY}
+    assert finding.evidence["saw_429"] is False
+    assert finding.evidence["served_200"] == _CONCURRENCY
+
+
+def test_any_429_no_finding() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, text="too many requests")
+
+    with _client(handler) as client:
+        findings = ConcurrencyAmplificationProbe().run(_ctx(client))
+
+    assert findings == []
+
+
+def test_429_among_200s_no_finding() -> None:
+    # Exactly one of the N concurrent requests returns 429; the others return 200.
+    # The mock counter is locked because handlers run on multiple worker threads.
+    state = {"n": 0}
+    lock = threading.Lock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        with lock:
+            state["n"] += 1
+            is_target = state["n"] == 3
+        if is_target:
+            return httpx.Response(429, text="slow down")
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler) as client:
+        findings = ConcurrencyAmplificationProbe().run(_ctx(client))
+
+    assert findings == []
+
+
+def test_one_transport_error_still_emits_finding() -> None:
+    # Exactly one of the N concurrent requests raises a transport error; the
+    # other four return 200. The probe's N-1 floor tolerates a single drop.
+    state = {"n": 0}
+    lock = threading.Lock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        with lock:
+            state["n"] += 1
+            is_target = state["n"] == 1
+        if is_target:
+            raise httpx.ConnectError("simulated transport drop", request=request)
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler) as client:
+        findings = ConcurrencyAmplificationProbe().run(_ctx(client))
+
+    assert len(findings) == 1
+    evidence = findings[0].evidence
+    assert evidence["served_200"] == _CONCURRENCY - 1
+    status_counts = evidence["status_counts"]
+    assert isinstance(status_counts, dict)
+    assert status_counts.get("200") == _CONCURRENCY - 1
+    assert status_counts.get("-1") == 1
+
+
+def test_all_transport_errors_raises_probe_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("simulated transport drop", request=request)
+
+    with _client(handler) as client, pytest.raises(ProbeError, match="transport failed for all"):
+        ConcurrencyAmplificationProbe().run(_ctx(client))
+
+
+def test_exactly_n_requests_dispatched() -> None:
+    state = {"n": 0}
+    lock = threading.Lock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        with lock:
+            state["n"] += 1
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler) as client:
+        ConcurrencyAmplificationProbe().run(_ctx(client))
+
+    assert state["n"] == _CONCURRENCY
+
+
+def test_concurrent_dispatch_uses_pool() -> None:
+    # If the N requests are dispatched sequentially, the total wall time would be
+    # ~N * per-request-sleep. Under genuine concurrency it is ~per-request-sleep
+    # plus thread overhead. A 50ms artificial delay per request gives a clear gap:
+    # sequential ~250ms, concurrent ~50ms. Threshold 200ms is well below the
+    # sequential floor and comfortably above the concurrent ceiling for CI noise.
+    def handler(request: httpx.Request) -> httpx.Response:
+        time.sleep(0.05)
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler) as client:
+        start = time.perf_counter()
+        ConcurrencyAmplificationProbe().run(_ctx(client))
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+    assert elapsed_ms < 200, f"expected concurrent dispatch (<200ms), got {elapsed_ms:.1f}ms"
+
+
+def test_429_not_retried() -> None:
+    state = {"n": 0}
+    lock = threading.Lock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        with lock:
+            state["n"] += 1
+        return httpx.Response(429, text="too many requests")
+
+    with _client(handler) as client:
+        findings = ConcurrencyAmplificationProbe().run(_ctx(client))
+
+    # Each of the N logical requests is exactly one HTTP call; a 429 is not retried.
+    assert state["n"] == _CONCURRENCY
+    assert findings == []
+
+
+def test_evidence_shape() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler) as client:
+        findings = ConcurrencyAmplificationProbe().run(_ctx(client))
+
+    assert len(findings) == 1
+    evidence = findings[0].evidence
+    assert evidence["concurrency"] == _CONCURRENCY
+    results = evidence["results"]
+    assert isinstance(results, list)
+    assert len(results) == _CONCURRENCY
+    for entry in results:
+        assert isinstance(entry, dict)
+        assert set(entry.keys()) == {"index", "status", "elapsed_ms"}
+    status_counts = evidence["status_counts"]
+    assert isinstance(status_counts, dict)
+    assert isinstance(evidence["saw_429"], bool)
+    assert isinstance(evidence["served_200"], int)
+    endpoint = evidence["endpoint"]
+    assert isinstance(endpoint, str)
+    assert "/v1/chat/completions" in endpoint
+
+
+def test_missing_credentials_raises_probe_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True})
+
+    with (
+        _client(handler) as client,
+        pytest.raises(ProbeError, match="requires credentials"),
+    ):
+        ConcurrencyAmplificationProbe().run(_ctx(client, credentials=None))
+
+
+def test_missing_model_raises_probe_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"ok": True})
+
+    with (
+        _client(handler) as client,
+        pytest.raises(ProbeError, match="model identifier"),
+    ):
+        ConcurrencyAmplificationProbe().run(_ctx(client, options={}))
+
+
+def test_required_classvars_set() -> None:
+    assert ConcurrencyAmplificationProbe.name == "concurrency_amplification"
+    assert isinstance(ConcurrencyAmplificationProbe.name, str)
+    assert ConcurrencyAmplificationProbe.module == "dow"
+    assert isinstance(ConcurrencyAmplificationProbe.module, str)
+    assert isinstance(ConcurrencyAmplificationProbe.description, str)
+    assert ConcurrencyAmplificationProbe.baseline_severity == Severity.MEDIUM
+    assert isinstance(ConcurrencyAmplificationProbe.baseline_severity, Severity)
+    assert ConcurrencyAmplificationProbe.tags == (
+        "dow",
+        "rate-limit",
+        "concurrency",
+        "infrastructure",
+    )
+    assert ConcurrencyAmplificationProbe.estimated_tokens_per_run == 155
+    assert isinstance(ConcurrencyAmplificationProbe.estimated_tokens_per_run, int)
