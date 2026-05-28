@@ -121,7 +121,7 @@ class AuthorizationGate:
             verify_scope(scope)
         except InvalidSignature as exc:
             msg = "scope signature verification failed"
-            raise AuthorizationError(msg) from exc
+            raise AuthorizationError(msg, scope=scope) from exc
 
         deadline = scope.authorized_until
         if deadline.tzinfo is None:

@@ -975,16 +975,17 @@ Carry-forward closed:
   probe fallbacks. An Ollama quickstart, a sample Ollama-targeted scope template, and
   a retitled paid-API quickstart were added so vectrava can be evaluated without
   paying any API costs.
+- AuthorizationGate signature-mismatch rejection now attaches the parsed scope to its
+  `AuthorizationError`, so a tampered-but-parseable scope produces an audit record that
+  captures the claimed signer (`scope_signed_by`), the claimed authorization window
+  (`scope_authorized_until`), the claimed public key (`scope_signer_public_key`), and a
+  fingerprint of the invalid signature (`scope_signature_sha256`). Two new gate-level
+  tests (`test_gate_rejects_signature_mismatch` and
+  `test_scope_present_on_signature_mismatch_rejection`) cover the rejection and the
+  scope attachment.
 
 Carry-forward still pending (actionable):
 
-- AuthorizationGate signature-mismatch rejection does not attach the parsed scope to
-  its `AuthorizationError`, so a tampered-but-parseable scope produces an audit record
-  without the claimed signer or window. The other post-parse rejections attach the
-  scope.
-- AuthorizationGate signature-mismatch path has no gate-level behavioral test in
-  `tests/test_auth_gate.py`; covered only at the signing-module level via direct
-  `verify_scope` calls.
 - README shared-flags paragraph omits `--model` and `--yes`. Both flags are real and
   surface in `vtra scan dow --help`; the paragraph should list them.
 - pyproject Development Status classifier is "2 - Pre-Alpha"; decide whether to bump

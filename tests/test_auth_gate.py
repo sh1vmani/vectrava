@@ -124,6 +124,44 @@ def test_scope_present_on_untrusted_rejection(
     assert exc_info.value.scope.public_key is not None
 
 
+def test_gate_rejects_signature_mismatch(
+    tmp_path: Path,
+    signed_scope_factory: Callable[..., Path],
+) -> None:
+    # Build a signed, trusted, non-expired scope, then tamper its signed_by after
+    # signing. The pubkey and signature still parse and the pubkey is still trusted,
+    # so the gate reaches the signature-verify step; verify_scope then fails because
+    # the canonical payload no longer matches the signature.
+    path = signed_scope_factory(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["signed_by"] = "Tampered Operator"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(AuthorizationError, match="signature verification"):
+        AuthorizationGate(path).check()
+
+
+def test_scope_present_on_signature_mismatch_rejection(
+    tmp_path: Path,
+    signed_scope_factory: Callable[..., Path],
+) -> None:
+    # The audit log captures the attacker's claimed scope on signature mismatch, so a
+    # forensic reviewer can see what was claimed even though the signature did not
+    # verify.
+    path = signed_scope_factory(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["signed_by"] = "Tampered Operator"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(AuthorizationError) as exc_info:
+        AuthorizationGate(path).check()
+
+    assert exc_info.value.scope is not None
+    assert exc_info.value.scope.signed_by == "Tampered Operator"
+    assert exc_info.value.scope.signature is not None
+    assert exc_info.value.scope.public_key is not None
+
+
 def test_scope_none_on_missing_file(tmp_path: Path) -> None:
     gate = AuthorizationGate(tmp_path / "does-not-exist.json")
     with pytest.raises(AuthorizationError) as exc_info:
