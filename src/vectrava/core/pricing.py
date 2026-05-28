@@ -33,6 +33,9 @@ USD_PER_1K_TOKENS = 0.01
 # Default model identifier used by the CLI and probe fallbacks when --model is
 # not passed. Centralized so the 15+ sites that previously hardcoded the default
 # share one source of truth; a future change is a one-line update here.
+# Drives the displayed cost estimate and the request body model field when
+# --model is omitted. Not a network endpoint default: there is no default target
+# host, so --target is always operator-supplied.
 DEFAULT_MODEL: str = "gpt-5.4-mini"
 
 # Model id -> per-1K input-token rate in USD. Keys are exact API id strings, not
@@ -45,7 +48,8 @@ PRICING_TABLE: dict[str, float] = {
     "gpt-5.4-mini": 0.00075,
     "gpt-5.4-nano": 0.0002,
     # gpt-4o-mini is delisted from the canonical OpenAI pricing page; rate from web
-    # search corroboration ($0.15 / 1M input). It remains vectrava's default model.
+    # search corroboration ($0.15 / 1M input). Kept for historical reasons and so
+    # cost lookups for this id still resolve after its delisting.
     # source: https://developers.openai.com/api/docs/pricing (delisted), fetched 2026-05-26
     "gpt-4o-mini": 0.00015,
     # Claude. rates: https://platform.claude.com/docs/en/about-claude/pricing, fetched 2026-05-26

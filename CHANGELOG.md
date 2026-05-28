@@ -84,7 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Scan cost estimates now use a built-in per-model pricing table covering eleven
   common OpenAI, Claude, and Gemini models; the displayed cost reflects the model
-  passed via `--model` (default `gpt-4o-mini`). Models not in the table fall back
+  passed via `--model` (default `gpt-5.4-mini`). Models not in the table fall back
   to a placeholder rate; the operator sees "fallback rate" in the cost caveat plus
   a one-line warning on stderr naming the missing model. The displayed cost widens
   from 2 to 4 decimal places so the figure stays meaningful at the per-1K-token
