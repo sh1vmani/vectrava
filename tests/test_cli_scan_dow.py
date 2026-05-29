@@ -16,6 +16,7 @@ from typer.testing import CliRunner
 
 from vectrava.cli import _estimated_cost_usd, app
 from vectrava.core import registry
+from vectrava.core.autodetect import OllamaDetection
 from vectrava.core.pricing import PRICING_TABLE, USD_PER_1K_TOKENS
 from vectrava.core.probe import Probe, ProbeContext
 from vectrava.core.result import Finding, Severity
@@ -833,3 +834,69 @@ def test_audit_field_records_cost_rate_source_for_dry_run_inherits_known_model(
     # source ("model"), not a third dry-run value.
     assert record["outcome"] == "dry_run"
     assert record["cost_rate_source"] == "model"
+
+
+def test_omitted_target_autodetects_ollama(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://localhost:11434"])
+    monkeypatch.setattr(
+        "vectrava.cli.detect_ollama",
+        lambda: OllamaDetection(base_url="http://localhost:11434", models=("llama3.2:1b",)),
+    )
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        ["scan", "dow", "--scope", str(scope), "--format", "json", "--output", str(out)],
+    )
+    assert result.exit_code == 0
+    assert "detected a local Ollama" in _combined(result)
+    # The autodetected base reached the probe as the resolved target.
+    assert len(_captured_options) == 1
+
+
+def test_omitted_target_no_ollama_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    scope = signed_scope_factory(tmp_path, targets=["http://localhost:11434"])
+    monkeypatch.setattr("vectrava.cli.detect_ollama", lambda: None)
+    result = runner.invoke(app, ["scan", "dow", "--scope", str(scope)])
+    assert result.exit_code == 2
+    assert "no local Ollama was found" in _combined(result)
+
+
+def test_explicit_target_does_not_autodetect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+
+    def boom() -> OllamaDetection | None:
+        raise AssertionError("detect_ollama must not be called when --target is given")
+
+    monkeypatch.setattr("vectrava.cli.detect_ollama", boom)
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+
+
+def test_omitted_scope_errors_with_scope_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("vectrava.cli.detect_ollama", lambda: None)
+    result = runner.invoke(app, ["scan", "dow"])
+    assert result.exit_code == 2
+    assert "--scope is required" in _combined(result)

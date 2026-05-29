@@ -31,6 +31,7 @@ from vectrava.config.scope import validate_base_target
 from vectrava.core import registry
 from vectrava.core.audit import _CHAIN_SENTINEL, AuditError, AuditWriter
 from vectrava.core.auth_gate import AuthorizationError, AuthorizationGate
+from vectrava.core.autodetect import OllamaDetection, detect_ollama
 from vectrava.core.pricing import DEFAULT_MODEL, USD_PER_1K_TOKENS, lookup_rate
 from vectrava.core.probe import Probe, ProbeContext, ProbeError
 from vectrava.core.result import Finding
@@ -239,9 +240,26 @@ def _run_scan(
             audit.set_outcome("invalid_arguments", 2)
             raise _fail(f"error: unknown format {output_format!r}. Choose from: {choices}")
 
-        if scope is None or target is None:
+        if target is None:
+            detection: OllamaDetection | None = detect_ollama()
+            if detection is not None:
+                target = detection.base_url
+                typer.echo(
+                    "note: no --target given; detected a local Ollama at "
+                    "http://localhost:11434 and using it as the target",
+                    err=True,
+                )
+
+        if scope is None:
             audit.set_outcome("invalid_arguments", 2)
-            raise _fail("error: --scope and --target are required for a scan run")
+            raise _fail("error: --scope is required for a scan run")
+        if target is None:
+            audit.set_outcome("invalid_arguments", 2)
+            raise _fail(
+                "error: --target is required; no local Ollama was found at "
+                "http://localhost:11434. Pass --target, or start Ollama for "
+                "zero-config local scanning."
+            )
 
         try:
             validate_base_target(target)
