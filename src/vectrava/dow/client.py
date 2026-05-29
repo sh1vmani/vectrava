@@ -47,7 +47,8 @@ class CompletionResult(BaseModel):
 def call_completion(
     http: httpx.Client,
     *,
-    url: str,
+    target_base: str,
+    endpoint_path: str = "/v1/chat/completions",
     credential: str,
     model: str,
     prompt: str,
@@ -65,7 +66,8 @@ def call_completion(
 
     Args:
         http: Synchronous client supplied by the runner.
-        url: Fully resolved POST URL.
+        target_base: Base target URL; the adapter appends the endpoint path.
+        endpoint_path: Path appended to the base to form the request URL.
         credential: Resolved API key value, sent as a Bearer token.
         model: Model identifier placed in the request body.
         prompt: The single user prompt to send.
@@ -81,12 +83,14 @@ def call_completion(
     Raises:
         ProbeError: on any transport, timeout, status, or schema failure.
     """
-    request_body: dict[str, object] = {
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": max_tokens,
-    }
-    headers = {"Authorization": f"Bearer {credential}"}
+    url, request_body, headers = ChatCompletionsAdapter().build_request(
+        target_base=target_base,
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=max_tokens,
+        credential=credential,
+        endpoint_path=endpoint_path,
+    )
 
     start = time.perf_counter()
     try:

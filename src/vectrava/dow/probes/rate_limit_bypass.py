@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, ClassVar, cast
 
 import httpx
 
+from vectrava.core.adapters import build_url
 from vectrava.core.http import post_no_retry
 from vectrava.core.probe import Probe, ProbeError
 from vectrava.core.registry import register
@@ -82,7 +83,7 @@ class RateLimitBypassProbe(Probe):
         model = raw_model
 
         endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
-        url = ctx.target.rstrip("/") + endpoint_path
+        url = build_url(ctx.target, endpoint_path)
         payload: dict[str, object] = {
             "model": model,
             "messages": [{"role": "user", "content": PROBE_PROMPT}],

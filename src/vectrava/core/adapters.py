@@ -42,6 +42,17 @@ class NormalizedResponse:
     raw: JsonValue | None
 
 
+def build_url(target_base: str, endpoint_path: str) -> str:
+    """Join a base target URL and an endpoint path into a request URL.
+
+    The single place dow request URLs are assembled, so the base-plus-path rule
+    is not duplicated across probes. The chat-completions builder uses it, and the
+    error probe (whose request bodies are deliberately malformed and so cannot go
+    through build_request) uses it directly for its URL.
+    """
+    return target_base.rstrip("/") + endpoint_path
+
+
 class VendorAdapter(Protocol):
     """Builds requests and parses responses for one target wire protocol."""
 
@@ -78,9 +89,10 @@ class ChatCompletionsAdapter:
         messages: list[dict[str, str]],
         max_tokens: int,
         credential: str,
+        endpoint_path: str = "/v1/chat/completions",
     ) -> tuple[str, dict[str, object], dict[str, str]]:
         """Build the chat-completions URL, body, and headers."""
-        url = target_base.rstrip("/") + "/v1/chat/completions"
+        url = build_url(target_base, endpoint_path)
         body: dict[str, object] = {
             "model": model,
             "messages": messages,

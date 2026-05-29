@@ -9,7 +9,27 @@ from __future__ import annotations
 import httpx
 from pydantic import JsonValue
 
-from vectrava.core.adapters import ChatCompletionsAdapter, NormalizedResponse
+from vectrava.core.adapters import ChatCompletionsAdapter, NormalizedResponse, build_url
+
+
+def test_build_url_appends_path() -> None:
+    assert build_url("https://x", "/v1/chat/completions") == "https://x/v1/chat/completions"
+
+
+def test_build_url_strips_trailing_slash() -> None:
+    assert build_url("https://x/", "/p") == "https://x/p"
+
+
+def test_build_request_honors_custom_endpoint_path() -> None:
+    url, _, _ = ChatCompletionsAdapter().build_request(
+        target_base="https://x",
+        model="m",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1,
+        credential="c",
+        endpoint_path="/custom",
+    )
+    assert url == "https://x/custom"
 
 
 def test_build_request_url_body_headers() -> None:

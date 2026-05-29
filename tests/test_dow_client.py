@@ -16,7 +16,7 @@ import pytest
 from vectrava.core.probe import ProbeError
 from vectrava.dow.client import CompletionResult, call_completion
 
-_URL = "https://example.test/v1/chat/completions"
+_TARGET_BASE = "https://example.test"  # call_completion appends /v1/chat/completions
 _MAX_ATTEMPTS = 3  # mirrors vectrava.dow.client._RETRY_MAX_ATTEMPTS
 
 Handler = Callable[[httpx.Request], httpx.Response]
@@ -36,7 +36,7 @@ def _client(handler: Handler) -> httpx.Client:
 def _call(client: httpx.Client) -> CompletionResult:
     return call_completion(
         client,
-        url=_URL,
+        target_base=_TARGET_BASE,
         credential="test-key",
         model="gpt-4o-mini",
         prompt="hello",

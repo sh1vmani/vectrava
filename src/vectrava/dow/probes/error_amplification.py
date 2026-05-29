@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+from vectrava.core.adapters import build_url
 from vectrava.core.http import post_with_retry
 from vectrava.core.probe import Probe, ProbeError
 from vectrava.core.registry import register
@@ -120,7 +121,7 @@ class ErrorAmplificationProbe(Probe):
             min_delay_s = 0.0
 
         endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
-        url = ctx.target.rstrip("/") + endpoint_path
+        url = build_url(ctx.target, endpoint_path)
         headers = {
             "Authorization": f"Bearer {credential}",
             "Content-Type": "application/json",

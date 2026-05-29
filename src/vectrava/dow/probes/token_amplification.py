@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
+from vectrava.core.adapters import build_url
 from vectrava.core.probe import Probe, ProbeError
 from vectrava.core.registry import register
 from vectrava.core.result import Severity
@@ -85,13 +86,14 @@ class TokenAmplificationProbe(Probe):
             min_delay_s = 0.0
 
         endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
-        url = ctx.target.rstrip("/") + endpoint_path
+        url = build_url(ctx.target, endpoint_path)
 
         findings: list[Finding] = []
         for category, prompt in PROMPTS:
             result = call_completion(
                 ctx.http,
-                url=url,
+                target_base=ctx.target,
+                endpoint_path=endpoint_path,
                 credential=credential,
                 model=model,
                 prompt=prompt,
