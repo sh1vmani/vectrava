@@ -1032,6 +1032,134 @@ Carry-forward still pending (not actionable):
 - Future scope-schema rps/burst cap fields (coupled to operator schema evolution;
   needs operator-side signal before adding fields).
 
+### Day 7 close (2026-05-28)
+
+Twelve commits this session: the eleven below plus this day-close. Closed every
+actionable carry-forward from the session start, fixed three latent defects the
+recon step surfaced that were not on the carry-forward, and shipped the first two
+units of the vendor-abstraction arc.
+
+Landed commits, in order:
+
+- `1a47bcb` docs(repo): align state docs with post-flip public reality.
+- `296083e` test(test): pin explicit model in integration scans.
+- `f3b0f7c` docs(core): clarify default model scope and fix stale default comments.
+- `348db98` fix(config): require base-URL scope targets to stop path doubling.
+- `7c64706` feat(core): autodetect a local Ollama when no target is given.
+- `b661a80` feat(cli): resolve an Ollama model for zero-config scans.
+- `1cc7198` docs(repo): document shared flags and a zero-config Ollama quickstart.
+- `67b6452` fix(test): replace concurrency timing bound with a barrier.
+- `a57ebd6` test(test): pin explicit model in cli scan cost tests.
+- `a645471` refactor(core): add a vendor adapter and route response parsing through it.
+- `b2f304e` refactor(dow): route dow request building through the vendor adapter.
+
+What shipped:
+
+Documentation truth-up. PROGRESS, CLAUDE.md, and AGENTS.md were aligned to the
+post-flip public state: the Week-N marker was replaced with a capability-
+delegating Current state block that points at the latest day-close. The README
+shared-flags paragraph was completed (it had omitted several flags shared across
+all three scan commands) and a zero-config Ollama quickstart was added. The Ollama
+quickstart command was corrected: it exported a placeholder credential but never
+passed the credential-env flag, so it could not run as written. The
+default-endpoint review closed as a documentation correction after it found the
+model default is a cost-estimate label and request-body field, not a network
+endpoint default: there is no default target host, so the target is always
+operator-supplied.
+
+Defects fixed. Scope targets must now be base URLs: probes append the endpoint
+path, so a full-URL target doubled the path against a live server, and the suite
+never caught it because mock transports answer any path. The concurrency probe
+test replaced its flaky wall-clock bound with a threading barrier that proves
+concurrent dispatch deterministically, after the bound overshot by 1.1ms on a busy
+CI runner.
+
+Test decoupling. The three integration files and the cli scan test file no longer
+rely on the implicit default model for their cost assertions, so a future default
+change is zero-fallout across the suite. The one exception is a single audit-cost
+test that intentionally tracks the default through the imported constant.
+
+Zero-config local scanning. Omitting the target flag autodetects a local Ollama at
+its default port and resolves a model from its tag list, preferring a known small
+id, with an actionable failure when none is reachable or no model is pulled.
+Authorization is unchanged: the resolved target still passes the base-URL
+validator, the gate, and the exact-string scope membership check.
+
+Vendor-abstraction arc, units 1 and 2a. A VendorAdapter protocol, a normalized
+response type, and a chat-completions adapter were added; the dow request path now
+builds URLs, bodies, and headers through the adapter, with the custom-endpoint
+override preserved and every dow request byte-identical on the wire. Neither unit
+changed behavior.
+
+State at end of this session:
+
+- Total commits: 95 (after this day-close lands)
+- Tests: 470 passing
+- Probe inventory: dow 6, ipi 5, rag 5 (17 total), 6-6-5 split
+- CRITICAL probes: 2 (`ipi.exfiltration_attempt`, `rag.retrieval_permission_leak`)
+- Repository public; four workflows (CI, No Secrets, CodeQL, Scorecard) green
+- Vendor adapter seam in place; the dow path is migrated onto it
+
+Carry-forward closed:
+
+- README shared-flags paragraph (was missing flags).
+- PROGRESS, CLAUDE, and AGENTS stale post-flip prose.
+- Default-endpoint review (closed as a documentation correction; the goal of a
+  cheaper default model from another vendor requires the vendor-abstraction arc,
+  scoped below).
+- Integration-test implicit-default coupling.
+- cli scan implicit-default coupling.
+- Ollama autodetection (host probe and model resolution).
+- Target-form path-doubling defect (recon-surfaced, not previously listed).
+- Ollama quickstart missing the credential flag (recon-surfaced).
+- Concurrency-probe wall-clock test flake (recon-surfaced).
+
+Carry-forward still pending:
+
+- Vendor-abstraction arc (Option C). Units 1 and 2a are done. Remaining:
+  - 2b: migrate the multi-turn helper (`exchange_turn`) and the ipi inline probes
+    onto the adapter. Central decision: `extract_chat_completion_content` is shared
+    by `exchange_turn` and eight inline content-consumers and raises two
+    test-pinned messages ("not a string" and "chat-completions"); 2b must retire it
+    or reimplement it over the adapter's `parse_response` while preserving both
+    messages. It is shared with rag, so 2c depends on what 2b leaves.
+  - 2c: migrate the rag probes onto the adapter and onto whatever 2b left of the
+    shared content parser.
+  - 3: add the second-vendor adapter; the motivating case is a second vendor's
+    native API, a non-chat-completions protocol. Pre-implementation task: verify
+    the vendor's request and response field names and enums against current API
+    docs before coding. Decision recorded: `model_substitution` is vendor-semantic
+    (it reads the echoed request model); a vendor that does not echo the model
+    makes that probe not-applicable, to be handled as an explicit skip rather than
+    a misleading finding, and documented in unit 5.
+  - 4: vendor selection. Locked design: a scan-level vendor flag defaulting to the
+    chat-completions vendor, so every existing scope and invocation keeps working.
+    The per-target scope-schema vendor field is deferred, because vendor is a
+    protocol property rather than an authorization property, and folding it into
+    the targets list collides with the exact-string membership check and the
+    base-URL validator. This is the least-reversible unit, a committed external
+    contract; design the flag name, default, and accepted values with care.
+  - 5: docs and an example scope for the new vendor.
+  Locked arc design: adapter seam (Architecture A); `NormalizedResponse` carries
+  content, prompt/completion/total tokens, finish_reason, reported_model,
+  status_code, and raw, where raw is the escape hatch `error_amplification` and
+  `model_substitution` depend on; adapter identifier `ChatCompletionsAdapter` /
+  `chat_completions`, the protocol name and not a provider; `VendorAdapter` is a
+  `typing.Protocol`; finish_reason normalization is identity for the
+  chat-completions adapter, and future vendors map into its vocabulary.
+- Test-fixture hex-token-literal sweep: standing convention to use low-entropy
+  placeholders; an optional one-time sweep, not a closeable task.
+
+Intersperse note for the next session: this session took three same-character
+adjacencies deliberately, all read as staged work within the rule's spirit: two
+feat commits (autodetect host, then model), a fix-test then test-test pair, and a
+refactor run across the adapter units. The refactor run is the one to watch: it is
+two deep now (Unit 1 core, 2a dow), and units 2b and 2c, if they land as
+refactor(ipi) and refactor(rag), extend it to four or five consecutive refactor
+commits. That is accepted as one staged migration but is the project's longest
+same-character stretch; the alternative, interleaving artificial non-refactor
+commits, is worse.
+
 ### Not done
 
 Carry-forward items live in the most recent day-close section's "Carry-forward"
