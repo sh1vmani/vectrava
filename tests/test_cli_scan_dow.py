@@ -23,6 +23,8 @@ from vectrava.core.result import Finding, Severity
 
 runner = CliRunner()
 
+_PINNED_MODEL = "gpt-5.4-nano"
+
 _captured_options: list[Mapping[str, JsonValue]] = []
 
 
@@ -127,12 +129,22 @@ def test_dry_run_prints_estimate(tmp_path: Path, signed_scope_factory: Callable[
     scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
     result = runner.invoke(
         app,
-        ["scan", "dow", "--scope", str(scope), "--target", "http://allowed", "--dry-run"],
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--model",
+            _PINNED_MODEL,
+            "--dry-run",
+        ],
     )
     assert result.exit_code == 0
     text = _combined(result)
     assert "2000" in text
-    assert "0.0015" in text
+    assert "0.0004" in text
 
 
 def test_padding_threshold_default_reaches_probe(
@@ -434,6 +446,8 @@ def test_cost_info_line_prints_below_threshold(
             str(scope),
             "--target",
             "http://allowed",
+            "--model",
+            _PINNED_MODEL,
             "--format",
             "json",
             "--output",
@@ -443,7 +457,7 @@ def test_cost_info_line_prints_below_threshold(
     assert result.exit_code == 0
     text = _combined(result)
     assert "Estimated cost: 2,000 tokens" in text
-    assert "(~$0.0015, model rate)" in text
+    assert "(~$0.0004, model rate)" in text
 
 
 def test_cost_info_line_prints_above_threshold_then_confirm(
@@ -461,6 +475,8 @@ def test_cost_info_line_prints_above_threshold_then_confirm(
             str(scope),
             "--target",
             "http://allowed",
+            "--model",
+            _PINNED_MODEL,
             "--format",
             "json",
             "--output",
@@ -470,7 +486,7 @@ def test_cost_info_line_prints_above_threshold_then_confirm(
     )
     text = _combined(result)
     assert "Estimated cost: 200,000 tokens" in text
-    assert "(~$0.1500, model rate)" in text
+    assert "(~$0.0400, model rate)" in text
     # The prompt's wording is unchanged and does not use thousands-separators.
     assert "This scan will consume up to 200000 tokens" in text
     assert result.exit_code in (0, 1)  # confirmed; 0 (no findings) here
@@ -497,7 +513,7 @@ def test_cost_info_line_format_matches_dry_run_numbers(
 ) -> None:
     # The info line uses thousands-separators for legibility at high token counts;
     # the dry-run line does not. Both paths agree on the numbers (2000 tokens,
-    # $0.0015) and the rate source (model rate); only the token formatting differs.
+    # $0.0004) and the rate source (model rate); only the token formatting differs.
     registry.register(_make_dow_probe("amp", tokens=2000))
     scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
     out = tmp_path / "out.json"
@@ -510,6 +526,8 @@ def test_cost_info_line_format_matches_dry_run_numbers(
             str(scope),
             "--target",
             "http://allowed",
+            "--model",
+            _PINNED_MODEL,
             "--format",
             "json",
             "--output",
@@ -518,15 +536,25 @@ def test_cost_info_line_format_matches_dry_run_numbers(
     )
     actual_text = _combined(actual)
     assert "2,000" in actual_text  # info line: comma-separated
-    assert "0.0015" in actual_text
+    assert "0.0004" in actual_text
 
     dry = runner.invoke(
         app,
-        ["scan", "dow", "--scope", str(scope), "--target", "http://allowed", "--dry-run"],
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--model",
+            _PINNED_MODEL,
+            "--dry-run",
+        ],
     )
     dry_text = _combined(dry)
     assert "2000" in dry_text  # dry-run line: no comma
-    assert "0.0015" in dry_text
+    assert "0.0004" in dry_text
 
 
 def test_cost_info_line_is_not_colored(
@@ -582,8 +610,10 @@ def test_audit_log_records_cost_estimate_for_live_scan(
     assert result.exit_code == 0
     record: Any = json.loads(_audit_lines(audit)[0])
     assert record["estimated_tokens"] == 2000
-    # Default model is gpt-5.4-mini; the audit field rounds to 6 decimals.
-    expected_cost, _ = _estimated_cost_usd(2000, "gpt-5.4-mini")
+    # No --model, so the scan resolves the built-in default; the audit cost uses
+    # the resolved default model's rate, rounded to 6 decimals. Referencing
+    # DEFAULT_MODEL keeps expectation and actual tracking the default together.
+    expected_cost, _ = _estimated_cost_usd(2000, DEFAULT_MODEL)
     assert record["estimated_cost_usd"] == round(expected_cost, 6)
 
 
