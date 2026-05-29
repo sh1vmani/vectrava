@@ -113,10 +113,17 @@ Step 6: Run a scan.
 
 ```sh
 export OLLAMA_KEY=ollama
-uv run vtra scan dow \
-  --scope ./scope.json \
-  --target http://localhost:11434 \
-  --model llama3.2:1b
+uv run vtra scan dow --scope ./scope.json --api-key-env OLLAMA_KEY
+```
+
+With no `--target`, vectrava probes a local Ollama at `http://localhost:11434`
+and prints a note that it detected and is using it; with no `--model`, it selects
+a pulled model, preferring `llama3.2:1b`. To pin the model or scan a non-default
+host, pass them explicitly:
+
+```sh
+uv run vtra scan dow --scope ./scope.json --api-key-env OLLAMA_KEY \
+  --target http://localhost:11434 --model llama3.2:1b
 ```
 
 A note on `OLLAMA_KEY`: vectrava's authorization gate requires a credential
@@ -181,12 +188,20 @@ uv run vtra scan dow --scope ./scope.signed.json \
   --api-key-env OPENAI_API_KEY
 ```
 
-Flags shared across `scan dow`, `scan ipi`, and `scan rag`: `--list` enumerates
-a module's probes without scope or target, `--only` runs a single named probe,
-`--dry-run` previews token cost without making API calls, `--format` selects the
-report format (`sarif`, `json`, or `html`), `--output` sets the report path, and
-`--max-requests-per-second` caps the outbound request rate. `scan dow` adds
-`--threshold` and `--padding-threshold` to tune its cost-amplification cutoffs.
+Flags shared across `scan dow`, `scan ipi`, and `scan rag`: `--scope` points at
+the signed scope file, `--target` names the base URL to probe (omit it to
+autodetect a local Ollama), `--api-key-env` names the environment variable
+holding the credential, `--endpoint` overrides the request path appended to the
+target, `--model` sets the model id sent in the request body (when omitted it is
+resolved from an autodetected local Ollama or the built-in default), `--only`
+runs a single named probe, `--list` enumerates a module's probes without scope or
+target, `--dry-run` previews token cost without making API calls, `--yes` skips
+the cost confirmation prompt that fires above the confirmation threshold,
+`--format` selects the report format (`sarif`, `json`, or `html`), `--output`
+sets the report path, `--max-requests-per-second` caps the outbound request rate,
+and `--audit-log` sets the path for the append-only audit record. `scan dow` adds
+`--threshold` and `--padding-threshold` to tune its cost-amplification cutoffs,
+`scan ipi` adds `--max-turns` to set the multi-turn conversation length, and
 `scan rag` adds `--num-sources` to set how many retrieved chunks each injection
 spans.
 
