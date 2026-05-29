@@ -10,7 +10,6 @@ guards the mutation with a threading.Lock.
 from __future__ import annotations
 
 import threading
-import time
 from collections.abc import Callable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 
@@ -167,21 +166,24 @@ def test_exactly_n_requests_dispatched() -> None:
 
 
 def test_concurrent_dispatch_uses_pool() -> None:
-    # If the N requests are dispatched sequentially, the total wall time would be
-    # ~N * per-request-sleep. Under genuine concurrency it is ~per-request-sleep
-    # plus thread overhead. A 50ms artificial delay per request gives a clear gap:
-    # sequential ~250ms, concurrent ~50ms. Threshold 200ms is well below the
-    # sequential floor and comfortably above the concurrent ceiling for CI noise.
+    # The probe must dispatch the burst concurrently, not serially. A barrier sized
+    # to the burst width releases only once all _CONCURRENCY requests are in flight
+    # at the same time; serial dispatch would block the first request at the barrier
+    # until the 5.0s timeout, raising BrokenBarrierError and failing the test. This
+    # proves true concurrency deterministically, with no wall-clock bound. The party
+    # size matches the probe's ThreadPoolExecutor max_workers (_CONCURRENCY).
+    barrier = threading.Barrier(_CONCURRENCY, timeout=5.0)
+
     def handler(request: httpx.Request) -> httpx.Response:
-        time.sleep(0.05)
+        barrier.wait()  # releases only when all _CONCURRENCY requests are concurrent
         return httpx.Response(200, json={"ok": True})
 
     with _client(handler) as client:
-        start = time.perf_counter()
-        ConcurrencyAmplificationProbe().run(_ctx(client))
-        elapsed_ms = (time.perf_counter() - start) * 1000
+        findings = ConcurrencyAmplificationProbe().run(_ctx(client))
 
-    assert elapsed_ms < 200, f"expected concurrent dispatch (<200ms), got {elapsed_ms:.1f}ms"
+    # Reaching this assertion proves the barrier released, i.e. the burst was
+    # genuinely concurrent. All requests returned 200 with no 429, so a finding fires.
+    assert len(findings) == 1
 
 
 def test_429_not_retried() -> None:
