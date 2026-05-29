@@ -63,6 +63,11 @@ COST_PROMPT_THRESHOLD_TOKENS = 150_000
 VALID_FORMATS = ("sarif", "json", "html")
 DEFAULT_OUTPUT = Path("findings.sarif")
 
+# When a zero-config scan resolves a model from a detected Ollama tag list,
+# prefer one of these known small ids so the choice matches the documented
+# quickstart; otherwise the first reported model is used.
+_OLLAMA_PREFERRED_MODELS = ("llama3.2:1b",)
+
 app = typer.Typer(
     name="vectrava",
     help="AI application security scanner. Defensive use only.",
@@ -94,6 +99,18 @@ def _estimated_cost_usd(tokens: int, model: str) -> tuple[float, bool]:
     """
     rate, is_fallback = lookup_rate(model)
     return (tokens / 1000) * rate, is_fallback
+
+
+def _select_ollama_model(models: tuple[str, ...]) -> str:
+    """Pick a model from a detected Ollama tag list.
+
+    Prefer a known small id when present so a zero-config run matches the
+    documented quickstart; otherwise use the first reported model.
+    """
+    for preferred in _OLLAMA_PREFERRED_MODELS:
+        if preferred in models:
+            return preferred
+    return models[0]
 
 
 def _load_module_probes(module: str) -> None:
@@ -240,8 +257,9 @@ def _run_scan(
             audit.set_outcome("invalid_arguments", 2)
             raise _fail(f"error: unknown format {output_format!r}. Choose from: {choices}")
 
+        detection: OllamaDetection | None = None
         if target is None:
-            detection: OllamaDetection | None = detect_ollama()
+            detection = detect_ollama()
             if detection is not None:
                 target = detection.base_url
                 typer.echo(
@@ -291,7 +309,19 @@ def _run_scan(
             raise
 
         raw_model = options.get("model")
-        model = raw_model if isinstance(raw_model, str) else DEFAULT_MODEL
+        if isinstance(raw_model, str):
+            model = raw_model
+        elif detection is not None and detection.models:
+            model = _select_ollama_model(detection.models)
+        elif detection is not None and not detection.models:
+            audit.set_outcome("invalid_arguments", 2)
+            raise _fail(
+                "error: a local Ollama was detected at http://localhost:11434 "
+                "but it has no models pulled. Run 'ollama pull <model>' or pass "
+                "--model."
+            )
+        else:
+            model = DEFAULT_MODEL
         total_tokens = sum(probe.estimated_tokens_per_run for probe in selected)
         cost, is_fallback = _estimated_cost_usd(total_tokens, model)
         audit.set_cost_estimate(total_tokens=total_tokens, cost_usd=cost, is_fallback=is_fallback)
@@ -344,6 +374,10 @@ def _run_scan(
         scan_error = False
         out_path = output if output is not None else DEFAULT_OUTPUT
 
+        # Carry the resolved model into the probe context so the probe sends the
+        # chosen model rather than its own None-to-default fallback.
+        probe_options = {**options, "model": model}
+
         with httpx.Client() as http:
             for probe_cls in selected:
                 probe = probe_cls()
@@ -354,7 +388,7 @@ def _run_scan(
                     scope=scope_file,
                     http=http,
                     logger=logger.bind(probe=probe.name),
-                    options=options,
+                    options=probe_options,
                 )
                 try:
                     findings.extend(probe.run(ctx))
@@ -455,7 +489,7 @@ def scan_dow(
         ),
     ] = 4.0,
     model: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--model",
             help=(
@@ -463,7 +497,7 @@ def scan_dow(
                 f"(e.g. {DEFAULT_MODEL})."
             ),
         ),
-    ] = DEFAULT_MODEL,
+    ] = None,
     max_requests_per_second: Annotated[
         float,
         typer.Option(
@@ -560,7 +594,7 @@ def scan_ipi(
         typer.Option("--format", help="Output format: sarif, json, or html."),
     ] = "sarif",
     model: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--model",
             help=(
@@ -568,7 +602,7 @@ def scan_ipi(
                 f"(e.g. {DEFAULT_MODEL})."
             ),
         ),
-    ] = DEFAULT_MODEL,
+    ] = None,
     max_turns: Annotated[
         int,
         typer.Option(
@@ -674,7 +708,7 @@ def scan_rag(
         typer.Option("--format", help="Output format: sarif, json, or html."),
     ] = "sarif",
     model: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--model",
             help=(
@@ -682,7 +716,7 @@ def scan_rag(
                 f"(e.g. {DEFAULT_MODEL})."
             ),
         ),
-    ] = DEFAULT_MODEL,
+    ] = None,
     num_sources: Annotated[
         int,
         typer.Option(

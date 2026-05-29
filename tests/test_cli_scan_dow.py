@@ -17,7 +17,7 @@ from typer.testing import CliRunner
 from vectrava.cli import _estimated_cost_usd, app
 from vectrava.core import registry
 from vectrava.core.autodetect import OllamaDetection
-from vectrava.core.pricing import PRICING_TABLE, USD_PER_1K_TOKENS
+from vectrava.core.pricing import DEFAULT_MODEL, PRICING_TABLE, USD_PER_1K_TOKENS
 from vectrava.core.probe import Probe, ProbeContext
 from vectrava.core.result import Finding, Severity
 
@@ -854,6 +854,8 @@ def test_omitted_target_autodetects_ollama(
     assert "detected a local Ollama" in _combined(result)
     # The autodetected base reached the probe as the resolved target.
     assert len(_captured_options) == 1
+    # The model resolved from the detected tag list reaches the probe.
+    assert _captured_options[0]["model"] == "llama3.2:1b"
 
 
 def test_omitted_target_no_ollama_errors(
@@ -900,3 +902,108 @@ def test_omitted_scope_errors_with_scope_message(monkeypatch: pytest.MonkeyPatch
     result = runner.invoke(app, ["scan", "dow"])
     assert result.exit_code == 2
     assert "--scope is required" in _combined(result)
+
+
+def _run_autodetect_scan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    signed_scope_factory: Callable[..., Path],
+    *,
+    models: tuple[str, ...],
+) -> Any:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://localhost:11434"])
+    monkeypatch.setattr(
+        "vectrava.cli.detect_ollama",
+        lambda: OllamaDetection(base_url="http://localhost:11434", models=models),
+    )
+    out = tmp_path / "out.json"
+    return runner.invoke(
+        app,
+        ["scan", "dow", "--scope", str(scope), "--format", "json", "--output", str(out)],
+    )
+
+
+def test_resolution_prefers_known_model_over_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signed_scope_factory: Callable[..., Path]
+) -> None:
+    result = _run_autodetect_scan(
+        tmp_path, monkeypatch, signed_scope_factory, models=("phi3", "llama3.2:1b")
+    )
+    assert result.exit_code == 0
+    assert _captured_options[0]["model"] == "llama3.2:1b"
+
+
+def test_resolution_falls_back_to_first_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signed_scope_factory: Callable[..., Path]
+) -> None:
+    result = _run_autodetect_scan(tmp_path, monkeypatch, signed_scope_factory, models=("phi3",))
+    assert result.exit_code == 0
+    assert _captured_options[0]["model"] == "phi3"
+
+
+def test_resolution_empty_models_fails_with_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signed_scope_factory: Callable[..., Path]
+) -> None:
+    result = _run_autodetect_scan(tmp_path, monkeypatch, signed_scope_factory, models=())
+    assert result.exit_code == 2
+    assert "no models pulled" in _combined(result)
+
+
+def test_resolution_explicit_target_uses_default_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+
+    def boom() -> OllamaDetection | None:
+        raise AssertionError("detect_ollama must not be called when --target is given")
+
+    monkeypatch.setattr("vectrava.cli.detect_ollama", boom)
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    assert _captured_options[0]["model"] == DEFAULT_MODEL
+
+
+def test_resolution_explicit_model_wins_over_detection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://localhost:11434"])
+    monkeypatch.setattr(
+        "vectrava.cli.detect_ollama",
+        lambda: OllamaDetection(base_url="http://localhost:11434", models=("llama3.2:1b",)),
+    )
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--model",
+            "some-model",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+    assert _captured_options[0]["model"] == "some-model"
