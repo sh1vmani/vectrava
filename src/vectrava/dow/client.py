@@ -14,8 +14,9 @@ from __future__ import annotations
 import time
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
+from vectrava.core.adapters import ChatCompletionsAdapter
 from vectrava.core.http import post_with_retry
 from vectrava.core.probe import ProbeError
 
@@ -129,42 +130,25 @@ def call_completion(
             details={"status": status, "body": response.text[:_BODY_PREVIEW_CHARS]},
         )
 
-    missing_usage = "target response missing token usage; cannot measure amplification"
-    try:
-        body = response.json()
-    except ValueError as exc:
+    normalized = ChatCompletionsAdapter().parse_response(response)
+    if (
+        normalized.prompt_tokens is None
+        or normalized.completion_tokens is None
+        or normalized.total_tokens is None
+    ):
         raise ProbeError(
-            missing_usage,
+            "target response missing token usage; cannot measure amplification",
             details={"body": response.text[:_BODY_PREVIEW_CHARS]},
-        ) from exc
-    if not isinstance(body, dict):
-        raise ProbeError(missing_usage, details={"body": response.text[:_BODY_PREVIEW_CHARS]})
-
-    usage_raw = body.get("usage")
-    if not isinstance(usage_raw, dict):
-        raise ProbeError(missing_usage, details={"body": response.text[:_BODY_PREVIEW_CHARS]})
-    try:
-        usage = TokenUsage.model_validate(usage_raw)
-    except ValidationError as exc:
-        raise ProbeError(
-            missing_usage,
-            details={"body": response.text[:_BODY_PREVIEW_CHARS]},
-        ) from exc
-
-    finish_reason: str | None = None
-    choices = body.get("choices")
-    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
-        raw_reason = choices[0].get("finish_reason")
-        if isinstance(raw_reason, str):
-            finish_reason = raw_reason
-
-    raw_model = body.get("model")
-    model_echo = raw_model if isinstance(raw_model, str) else None
+        )
 
     return CompletionResult(
-        usage=usage,
-        finish_reason=finish_reason,
+        usage=TokenUsage(
+            prompt_tokens=normalized.prompt_tokens,
+            completion_tokens=normalized.completion_tokens,
+            total_tokens=normalized.total_tokens,
+        ),
+        finish_reason=normalized.finish_reason,
         latency_ms=latency_ms,
         http_status=status,
-        model=model_echo,
+        model=normalized.reported_model,
     )
