@@ -199,7 +199,9 @@ target, `--dry-run` previews token cost without making API calls, `--yes` skips
 the cost confirmation prompt that fires above the confirmation threshold,
 `--format` selects the report format (`sarif`, `json`, or `html`), `--output`
 sets the report path, `--max-requests-per-second` caps the outbound request rate,
-and `--audit-log` sets the path for the append-only audit record. `scan dow` adds
+`--audit-log` sets the path for the append-only audit record, and `--vendor`
+selects the target API protocol and accepts `chat_completions`, the default.
+`scan dow` adds
 `--threshold` and `--padding-threshold` to tune its cost-amplification cutoffs,
 `scan ipi` adds `--max-turns` to set the multi-turn conversation length, and
 `scan rag` adds `--num-sources` to set how many retrieved chunks each injection

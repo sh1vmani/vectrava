@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A `--vendor` flag and per-scan adapter selection. Each `scan` subcommand
+  accepts `--vendor` to pick the target API protocol; it defaults to the
+  chat-completions protocol, so existing scans are unchanged on the wire. The
+  selected adapter is built once per scan and used by every probe, replacing the
+  per-probe hardcoded adapter.
 - `rag.retrieval_permission_leak` probe (CRITICAL severity) tests whether the
   target's RAG pipeline enforces per-query permission boundaries on retrieved
   documents. Three attack framings (direct request, indirect reference, filter
