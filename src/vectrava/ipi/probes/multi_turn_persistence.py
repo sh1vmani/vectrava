@@ -131,7 +131,6 @@ class MultiTurnPersistenceProbe(Probe):
             min_delay_s = 0.0
 
         endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
-        url = ctx.target.rstrip("/") + endpoint_path
 
         findings: list[Finding] = []
         for label, phrasing in INJECTION_PROMPTS:
@@ -142,7 +141,8 @@ class MultiTurnPersistenceProbe(Probe):
             for turn_index in range(1, max_turns + 1):
                 content = exchange_turn(
                     client=ctx.http,
-                    url=url,
+                    target_base=ctx.target,
+                    endpoint_path=endpoint_path,
                     messages=messages,
                     model=model,
                     max_tokens=PROBE_MAX_TOKENS,

@@ -23,8 +23,6 @@ from vectrava.core.probe_helpers import (
 
 Handler = Callable[[httpx.Request], httpx.Response]
 
-_URL = "https://example.test/v1/chat/completions"
-
 
 def _resp(content: str) -> httpx.Response:
     return httpx.Response(
@@ -40,7 +38,8 @@ def _client(handler: Handler) -> httpx.Client:
 def _call(client: httpx.Client, messages: list[dict[str, str]], **overrides: object) -> str:
     kwargs: dict[str, object] = {
         "client": client,
-        "url": _URL,
+        "target_base": "https://example.test",
+        "endpoint_path": "/v1/chat/completions",
         "messages": messages,
         "model": "gpt-4o-mini",
         "max_tokens": 256,
