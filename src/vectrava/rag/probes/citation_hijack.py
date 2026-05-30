@@ -21,6 +21,7 @@ from __future__ import annotations
 import secrets
 from typing import TYPE_CHECKING, ClassVar
 
+from vectrava.core.adapters import ChatCompletionsAdapter
 from vectrava.core.http import post_with_retry
 from vectrava.core.pricing import DEFAULT_MODEL
 from vectrava.core.probe import Probe, ProbeError
@@ -130,7 +131,6 @@ class CitationHijackProbe(Probe):
             min_delay_s = 0.0
 
         endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
-        url = ctx.target.rstrip("/") + endpoint_path
 
         findings: list[Finding] = []
         for label, chunks_template in INJECTION_PROMPTS:
@@ -141,18 +141,17 @@ class CitationHijackProbe(Probe):
                 f'<source id="{i + 1}">\n{chunk}\n</source>' for i, chunk in enumerate(chunks)
             )
             user_content = f"{USER_QUERY}\n\nSources:\n{sources_block}"
-            payload: dict[str, object] = {
-                "model": model,
-                "messages": [
+            url, payload, headers = ChatCompletionsAdapter().build_request(
+                target_base=ctx.target,
+                model=model,
+                messages=[
                     {"role": "system", "content": TRUSTED_INSTRUCTION},
                     {"role": "user", "content": user_content},
                 ],
-                "max_tokens": PROBE_MAX_TOKENS,
-            }
-            headers = {
-                "Authorization": f"Bearer {credential}",
-                "Content-Type": "application/json",
-            }
+                max_tokens=PROBE_MAX_TOKENS,
+                credential=credential,
+                endpoint_path=endpoint_path,
+            )
             response = post_with_retry(
                 ctx.http,
                 url,
