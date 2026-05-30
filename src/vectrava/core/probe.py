@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
 
     from vectrava.config.scope import ScopeFile
+    from vectrava.core.adapters import VendorAdapter
 
 
 class ProbeError(Exception):
@@ -69,6 +70,7 @@ class ProbeContext:
         scope: The validated scope authorization for this run.
         http: Synchronous HTTP client the probe should use for requests.
         logger: Bound structlog logger for progress and diagnostics.
+        adapter: Vendor adapter the probe builds requests (and dow parses) through.
         options: Reserved for future per-probe tuning supplied by the operator.
     """
 
@@ -78,6 +80,7 @@ class ProbeContext:
     scope: ScopeFile
     http: httpx.Client
     logger: structlog.BoundLogger
+    adapter: VendorAdapter
     options: Mapping[str, JsonValue]
 
 

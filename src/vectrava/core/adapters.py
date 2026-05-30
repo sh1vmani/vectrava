@@ -15,6 +15,7 @@ which status counts as an error) to the caller.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -64,8 +65,13 @@ class VendorAdapter(Protocol):
         messages: list[dict[str, str]],
         max_tokens: int,
         credential: str,
+        endpoint_path: str,
     ) -> tuple[str, dict[str, object], dict[str, str]]:
-        """Return (url, body, headers) for a completion request."""
+        """Return (url, body, headers) for a completion request.
+
+        Each adapter supplies its own default endpoint_path on the concrete
+        method; callers that route through this Protocol pass it explicitly.
+        """
         ...
 
     def parse_response(self, response: httpx.Response) -> NormalizedResponse:
@@ -283,3 +289,30 @@ def _extract_messages_usage(body: dict[str, object]) -> tuple[int | None, int | 
         return value if isinstance(value, int) else None
 
     return _int_field("input_tokens"), _int_field("output_tokens")
+
+
+# Vendor selection. SUPPORTED_VENDORS is the single source of truth for which
+# protocol ids the CLI accepts; the factory registers an adapter for each. They
+# must stay in sync: only ids in SUPPORTED_VENDORS are registered, so a value the
+# CLI accepts always resolves to an adapter. MessagesAdapter exists but is not
+# registered yet; it is wired in when the messages vendor path is enabled.
+SUPPORTED_VENDORS: tuple[str, ...] = ("chat_completions",)
+
+_VENDOR_ADAPTERS: dict[str, Callable[[], VendorAdapter]] = {
+    "chat_completions": ChatCompletionsAdapter,
+}
+
+
+def adapter_for(vendor: str) -> VendorAdapter:
+    """Return a fresh adapter instance for a supported vendor id.
+
+    The CLI validates the id against SUPPORTED_VENDORS before calling, so this is
+    the authoritative backstop: an unregistered id raises ValueError rather than
+    silently falling back to a default protocol.
+    """
+    try:
+        factory = _VENDOR_ADAPTERS[vendor]
+    except KeyError as exc:
+        supported = ", ".join(SUPPORTED_VENDORS)
+        raise ValueError(f"unknown vendor {vendor!r}; supported: {supported}") from exc
+    return factory()

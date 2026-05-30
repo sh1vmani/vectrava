@@ -14,6 +14,7 @@ from collections.abc import Callable
 import httpx
 import pytest
 
+from vectrava.core.adapters import ChatCompletionsAdapter
 from vectrava.core.probe import ProbeError
 from vectrava.core.probe_helpers import (
     exchange_turn,
@@ -38,6 +39,7 @@ def _client(handler: Handler) -> httpx.Client:
 def _call(client: httpx.Client, messages: list[dict[str, str]], **overrides: object) -> str:
     kwargs: dict[str, object] = {
         "client": client,
+        "adapter": ChatCompletionsAdapter(),
         "target_base": "https://example.test",
         "endpoint_path": "/v1/chat/completions",
         "messages": messages,

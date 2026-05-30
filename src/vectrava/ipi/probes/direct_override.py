@@ -18,7 +18,6 @@ from __future__ import annotations
 import secrets
 from typing import TYPE_CHECKING, ClassVar
 
-from vectrava.core.adapters import ChatCompletionsAdapter
 from vectrava.core.http import post_with_retry
 from vectrava.core.pricing import DEFAULT_MODEL
 from vectrava.core.probe import Probe, ProbeError
@@ -95,7 +94,7 @@ class DirectOverrideProbe(Probe):
             canary = secrets.token_hex(8)
             injected_document = phrasing.format(canary=canary)
             user_content = f"{TRUSTED_INSTRUCTION}\n\n<document>\n{injected_document}\n</document>"
-            url, payload, headers = ChatCompletionsAdapter().build_request(
+            url, payload, headers = ctx.adapter.build_request(
                 target_base=ctx.target,
                 model=model,
                 messages=[{"role": "user", "content": user_content}],

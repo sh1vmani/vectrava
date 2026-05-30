@@ -7,12 +7,15 @@ reads only the response and never touches the network.
 from __future__ import annotations
 
 import httpx
+import pytest
 from pydantic import JsonValue
 
 from vectrava.core.adapters import (
+    SUPPORTED_VENDORS,
     ChatCompletionsAdapter,
     MessagesAdapter,
     NormalizedResponse,
+    adapter_for,
     build_url,
 )
 
@@ -340,3 +343,26 @@ def test_messages_parse_raw_populated_on_success() -> None:
         reported_model="served-model-9",
         raw=body,
     )
+
+
+# --- vendor selection factory ----------------------------------------------
+
+
+def test_supported_vendors_contains_chat_completions_only() -> None:
+    assert "chat_completions" in SUPPORTED_VENDORS
+    # messages exists as an adapter but is not a selectable vendor yet.
+    assert "messages" not in SUPPORTED_VENDORS
+
+
+def test_adapter_for_chat_completions_returns_chat_adapter() -> None:
+    assert isinstance(adapter_for("chat_completions"), ChatCompletionsAdapter)
+
+
+def test_adapter_for_messages_is_unregistered_and_raises() -> None:
+    with pytest.raises(ValueError, match="unknown vendor"):
+        adapter_for("messages")
+
+
+def test_adapter_for_unknown_raises() -> None:
+    with pytest.raises(ValueError, match="unknown vendor"):
+        adapter_for("nope")

@@ -13,6 +13,7 @@ from collections.abc import Callable
 import httpx
 import pytest
 
+from vectrava.core.adapters import ChatCompletionsAdapter
 from vectrava.core.probe import ProbeError
 from vectrava.dow.client import CompletionResult, call_completion
 
@@ -36,6 +37,7 @@ def _client(handler: Handler) -> httpx.Client:
 def _call(client: httpx.Client) -> CompletionResult:
     return call_completion(
         client,
+        adapter=ChatCompletionsAdapter(),
         target_base=_TARGET_BASE,
         credential="test-key",
         model="gpt-4o-mini",

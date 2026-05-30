@@ -16,7 +16,7 @@ import time
 import httpx
 from pydantic import BaseModel
 
-from vectrava.core.adapters import ChatCompletionsAdapter
+from vectrava.core.adapters import VendorAdapter
 from vectrava.core.http import post_with_retry
 from vectrava.core.probe import ProbeError
 
@@ -47,6 +47,7 @@ class CompletionResult(BaseModel):
 def call_completion(
     http: httpx.Client,
     *,
+    adapter: VendorAdapter,
     target_base: str,
     endpoint_path: str = "/v1/chat/completions",
     credential: str,
@@ -66,6 +67,7 @@ def call_completion(
 
     Args:
         http: Synchronous client supplied by the runner.
+        adapter: Vendor adapter used to build the request and parse the response.
         target_base: Base target URL; the adapter appends the endpoint path.
         endpoint_path: Path appended to the base to form the request URL.
         credential: Resolved API key value, sent as a Bearer token.
@@ -83,7 +85,7 @@ def call_completion(
     Raises:
         ProbeError: on any transport, timeout, status, or schema failure.
     """
-    url, request_body, headers = ChatCompletionsAdapter().build_request(
+    url, request_body, headers = adapter.build_request(
         target_base=target_base,
         model=model,
         messages=[{"role": "user", "content": prompt}],
@@ -134,7 +136,7 @@ def call_completion(
             details={"status": status, "body": response.text[:_BODY_PREVIEW_CHARS]},
         )
 
-    normalized = ChatCompletionsAdapter().parse_response(response)
+    normalized = adapter.parse_response(response)
     if (
         normalized.prompt_tokens is None
         or normalized.completion_tokens is None

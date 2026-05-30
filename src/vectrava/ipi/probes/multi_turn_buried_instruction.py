@@ -154,6 +154,7 @@ class MultiTurnBuriedInstructionProbe(Probe):
             for turn_index in range(1, max_turns + 1):
                 content = exchange_turn(
                     client=ctx.http,
+                    adapter=ctx.adapter,
                     target_base=ctx.target,
                     endpoint_path=endpoint_path,
                     messages=messages,

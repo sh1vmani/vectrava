@@ -29,6 +29,7 @@ from vectrava import __version__
 from vectrava.config.byok import BYOKConfig
 from vectrava.config.scope import validate_base_target
 from vectrava.core import registry
+from vectrava.core.adapters import SUPPORTED_VENDORS, adapter_for
 from vectrava.core.audit import _CHAIN_SENTINEL, AuditError, AuditWriter
 from vectrava.core.auth_gate import AuthorizationError, AuthorizationGate
 from vectrava.core.autodetect import OllamaDetection, detect_ollama
@@ -204,6 +205,7 @@ def _emit_findings(
 def _run_scan(
     module: str,
     *,
+    vendor: str,
     scope: Path | None,
     target: str | None,
     endpoint: str | None,
@@ -256,6 +258,11 @@ def _run_scan(
             choices = ", ".join(VALID_FORMATS)
             audit.set_outcome("invalid_arguments", 2)
             raise _fail(f"error: unknown format {output_format!r}. Choose from: {choices}")
+
+        if vendor not in SUPPORTED_VENDORS:
+            supported = ", ".join(SUPPORTED_VENDORS)
+            audit.set_outcome("invalid_arguments", 2)
+            raise _fail(f"Unsupported vendor {vendor!r}. Supported: {supported}.")
 
         detection: OllamaDetection | None = None
         if target is None:
@@ -377,6 +384,7 @@ def _run_scan(
         # Carry the resolved model into the probe context so the probe sends the
         # chosen model rather than its own None-to-default fallback.
         probe_options = {**options, "model": model}
+        adapter = adapter_for(vendor)
 
         with httpx.Client() as http:
             for probe_cls in selected:
@@ -388,6 +396,7 @@ def _run_scan(
                     scope=scope_file,
                     http=http,
                     logger=logger.bind(probe=probe.name),
+                    adapter=adapter,
                     options=probe_options,
                 )
                 try:
@@ -469,6 +478,10 @@ def scan_dow(
         str,
         typer.Option("--format", help="Output format: sarif, json, or html."),
     ] = "sarif",
+    vendor: Annotated[
+        str,
+        typer.Option("--vendor", help="Target API protocol: chat_completions."),
+    ] = "chat_completions",
     threshold: Annotated[
         float,
         typer.Option(
@@ -536,6 +549,7 @@ def scan_dow(
     )
     _run_scan(
         "dow",
+        vendor=vendor,
         scope=scope,
         target=target,
         endpoint=endpoint,
@@ -603,6 +617,10 @@ def scan_ipi(
             ),
         ),
     ] = None,
+    vendor: Annotated[
+        str,
+        typer.Option("--vendor", help="Target API protocol: chat_completions."),
+    ] = "chat_completions",
     max_turns: Annotated[
         int,
         typer.Option(
@@ -650,6 +668,7 @@ def scan_ipi(
     )
     _run_scan(
         "ipi",
+        vendor=vendor,
         scope=scope,
         target=target,
         endpoint=endpoint,
@@ -717,6 +736,10 @@ def scan_rag(
             ),
         ),
     ] = None,
+    vendor: Annotated[
+        str,
+        typer.Option("--vendor", help="Target API protocol: chat_completions."),
+    ] = "chat_completions",
     num_sources: Annotated[
         int,
         typer.Option(
@@ -765,6 +788,7 @@ def scan_rag(
     )
     _run_scan(
         "rag",
+        vendor=vendor,
         scope=scope,
         target=target,
         endpoint=endpoint,

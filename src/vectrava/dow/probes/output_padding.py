@@ -86,6 +86,7 @@ class OutputPaddingProbe(Probe):
         for category, prompt, expected in PROMPTS:
             result = call_completion(
                 ctx.http,
+                adapter=ctx.adapter,
                 target_base=ctx.target,
                 endpoint_path=endpoint_path,
                 credential=credential,

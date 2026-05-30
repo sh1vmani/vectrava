@@ -23,6 +23,7 @@ from pydantic import JsonValue
 
 from vectrava.config.scope import ScopeFile
 from vectrava.core import registry
+from vectrava.core.adapters import ChatCompletionsAdapter
 from vectrava.core.probe import ProbeContext, ProbeError
 from vectrava.core.probe_helpers import GENERIC_FILLER_TURNS
 from vectrava.core.result import Severity
@@ -66,6 +67,7 @@ def _ctx(
         scope=_scope(),
         http=client,
         logger=structlog.get_logger(),
+        adapter=ChatCompletionsAdapter(),
         options=options if options is not None else {"model": "gpt-4o-mini"},
     )
 

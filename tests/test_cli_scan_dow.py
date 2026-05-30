@@ -1037,3 +1037,87 @@ def test_resolution_explicit_model_wins_over_detection(
     )
     assert result.exit_code == 0
     assert _captured_options[0]["model"] == "some-model"
+
+
+def test_vendor_defaults_to_chat_completions(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    # No --vendor: the default (chat_completions) is accepted and the scan runs.
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+
+
+def test_vendor_chat_completions_explicit_accepted(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--vendor",
+            "chat_completions",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0
+
+
+def test_vendor_messages_rejected_exit_2(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--vendor",
+            "messages",
+        ],
+    )
+    assert result.exit_code == 2
+    assert "Unsupported vendor 'messages'. Supported: chat_completions." in _combined(result)
+
+
+def test_vendor_unknown_rejected_exit_2(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    result = runner.invoke(
+        app,
+        ["scan", "dow", "--scope", str(scope), "--target", "http://allowed", "--vendor", "garbage"],
+    )
+    assert result.exit_code == 2
+    assert "Unsupported vendor 'garbage'. Supported: chat_completions." in _combined(result)

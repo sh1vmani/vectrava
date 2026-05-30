@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import httpx
 
-from vectrava.core.adapters import ChatCompletionsAdapter
+from vectrava.core.adapters import VendorAdapter
 from vectrava.core.http import post_with_retry
 from vectrava.core.probe import ProbeError
 
@@ -118,6 +118,7 @@ def interleave_padding_chunks(
 def exchange_turn(
     *,
     client: httpx.Client,
+    adapter: VendorAdapter,
     target_base: str,
     endpoint_path: str,
     messages: list[dict[str, str]],
@@ -142,6 +143,7 @@ def exchange_turn(
 
     Args:
         client: Synchronous HTTP client supplied by the runner.
+        adapter: Vendor adapter used to build the request (URL, body, headers).
         target_base: Base target URL; the adapter appends the endpoint path.
         endpoint_path: Path appended to the base to form the request URL.
         messages: The running conversation. Mutated in place (assistant turn
@@ -165,7 +167,7 @@ def exchange_turn(
         ProbeError: on a non-2xx status, or when the response is not a
             chat-completions object with string message content.
     """
-    url, payload, headers = ChatCompletionsAdapter().build_request(
+    url, payload, headers = adapter.build_request(
         target_base=target_base,
         model=model,
         messages=messages,
