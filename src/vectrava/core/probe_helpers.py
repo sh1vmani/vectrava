@@ -1,8 +1,8 @@
 """Shared helpers for probe implementations across all modules.
 
 Utilities that more than one probe needs live here, so a single definition
-serves every module instead of each probe carrying its own copy. The first
-helper extracts assistant content from chat-completions response bodies; helpers
+serves every module instead of each probe carrying its own copy. One helper
+returns the assistant content from a parsed NormalizedResponse or raises; helpers
 for other response shapes (embeddings, tool calls, and so on) belong here too as
 the probe suite grows.
 """
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import httpx
 
-from vectrava.core.adapters import VendorAdapter
+from vectrava.core.adapters import NormalizedResponse, VendorAdapter
 from vectrava.core.http import post_with_retry
 from vectrava.core.probe import ProbeError
 
@@ -35,43 +35,34 @@ GENERIC_FILLER_TURNS: tuple[str, ...] = (
 )
 
 
-def extract_chat_completion_content(
-    body: object,
-    label: str,
-    probe_name: str,
-) -> str:
-    """Extract the assistant message content from a chat-completions response.
+def content_or_raise(normalized: NormalizedResponse, label: str, probe_name: str) -> str:
+    """Return the assistant text from a parsed response, or raise on a bad shape.
+
+    The adapter's parse_response is non-raising and reports absent assistant
+    content as None. Consumers that need the text call this to recover the
+    raise-on-malformed contract: a string is returned, otherwise a ProbeError is
+    raised carrying the probe name and the injection label for context.
 
     Args:
-        body: The JSON-decoded response body.
+        normalized: The adapter-parsed response.
         label: The probe-internal label of the current injection or test case,
             used for error context.
         probe_name: The probe's name attribute, used for error attribution.
 
     Returns:
-        The string content from choices[0]["message"]["content"].
+        The assistant message content.
 
     Raises:
-        ProbeError: If body is not a dict, choices is missing, empty, or not a
-            list, the first choice is not a dict, message is missing or not a
-            dict, or content is missing or not a string.
+        ProbeError: when the response carried no string assistant content.
     """
-    try:
-        choices = body["choices"]  # type: ignore[index]
-        content = choices[0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as exc:
-        raise ProbeError(
-            "target response was not a chat-completions object with message content",
-            probe_name=probe_name,
-            details={"injection_label": label},
-        ) from exc
-    if not isinstance(content, str):
-        raise ProbeError(
-            "target response message content was not a string",
-            probe_name=probe_name,
-            details={"injection_label": label},
-        )
-    return content
+    content = normalized.content
+    if isinstance(content, str):
+        return content
+    raise ProbeError(
+        "target response was not a chat-completions object with message content",
+        probe_name=probe_name,
+        details={"injection_label": label},
+    )
 
 
 def interleave_padding_chunks(
@@ -194,8 +185,7 @@ def exchange_turn(
             },
         )
 
-    content = extract_chat_completion_content(
-        response.json(), f"{label}:turn{turn_index}", probe_name
-    )
+    normalized = adapter.parse_response(response)
+    content = content_or_raise(normalized, f"{label}:turn{turn_index}", probe_name)
     messages.append({"role": "assistant", "content": content})
     return content

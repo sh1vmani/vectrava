@@ -37,7 +37,7 @@ from vectrava.core.http import post_with_retry
 from vectrava.core.pricing import DEFAULT_MODEL
 from vectrava.core.probe import Probe, ProbeError
 from vectrava.core.probe_helpers import (
-    extract_chat_completion_content,
+    content_or_raise,
     interleave_padding_chunks,
 )
 from vectrava.core.registry import register
@@ -177,7 +177,7 @@ class PromptLeakViaRetrievalProbe(Probe):
                     details={"status": response.status_code, "injection_label": label},
                 )
 
-            content = extract_chat_completion_content(response.json(), label, self.name)
+            content = content_or_raise(ctx.adapter.parse_response(response), label, self.name)
 
             if canary in content:
                 evidence: dict[str, JsonValue] = {

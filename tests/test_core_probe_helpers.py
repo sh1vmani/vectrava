@@ -2,9 +2,8 @@
 
 Covers the shared single-turn conversation step exchange_turn (which uses
 httpx.MockTransport so no network is touched and no environment variable is
-read), plus the two older helpers in this module, extract_chat_completion_content
-and interleave_padding_chunks, which previously had only indirect coverage
-through the probe suites.
+read), plus the content_or_raise and interleave_padding_chunks helpers in this
+module.
 """
 
 from __future__ import annotations
@@ -14,11 +13,11 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from vectrava.core.adapters import ChatCompletionsAdapter
+from vectrava.core.adapters import ChatCompletionsAdapter, NormalizedResponse
 from vectrava.core.probe import ProbeError
 from vectrava.core.probe_helpers import (
+    content_or_raise,
     exchange_turn,
-    extract_chat_completion_content,
     interleave_padding_chunks,
 )
 
@@ -136,41 +135,34 @@ def test_exchange_turn_honors_min_delay_s(monkeypatch: pytest.MonkeyPatch) -> No
     assert 0 < sleeps[0] <= 0.1
 
 
-# --- extract_chat_completion_content ---------------------------------------
+# --- content_or_raise ------------------------------------------------------
 
 
-def test_extract_returns_content_for_valid_body() -> None:
-    body = {"choices": [{"message": {"content": "hello"}}]}
-    assert extract_chat_completion_content(body, "label", "probe") == "hello"
+def _normalized(content: str | None) -> NormalizedResponse:
+    return NormalizedResponse(
+        status_code=200,
+        content=content,
+        prompt_tokens=None,
+        completion_tokens=None,
+        total_tokens=None,
+        finish_reason=None,
+        reported_model=None,
+        raw=None,
+    )
 
 
-def test_extract_raises_on_missing_choices() -> None:
+def test_content_or_raise_returns_string_content() -> None:
+    assert content_or_raise(_normalized("hello"), "label", "probe") == "hello"
+
+
+def test_content_or_raise_raises_on_none_content() -> None:
     with pytest.raises(ProbeError, match="chat-completions"):
-        extract_chat_completion_content({}, "label", "probe")
-    with pytest.raises(ProbeError, match="chat-completions"):
-        extract_chat_completion_content({"choices": []}, "label", "probe")
+        content_or_raise(_normalized(None), "label", "probe")
 
 
-def test_extract_raises_on_non_string_content() -> None:
-    for bad in (None, ["a", "b"], {"nested": 1}):
-        body = {"choices": [{"message": {"content": bad}}]}
-        with pytest.raises(ProbeError, match="not a string"):
-            extract_chat_completion_content(body, "label", "probe")
-
-
-def test_extract_raises_on_missing_message() -> None:
-    with pytest.raises(ProbeError, match="chat-completions"):
-        extract_chat_completion_content({"choices": [{}]}, "label", "probe")
-
-
-def test_extract_raises_on_missing_content() -> None:
-    with pytest.raises(ProbeError, match="chat-completions"):
-        extract_chat_completion_content({"choices": [{"message": {}}]}, "label", "probe")
-
-
-def test_extract_error_carries_label_and_probe_name() -> None:
+def test_content_or_raise_error_carries_label_and_probe_name() -> None:
     with pytest.raises(ProbeError) as exc_info:
-        extract_chat_completion_content({}, "case_a", "my_probe")
+        content_or_raise(_normalized(None), "case_a", "my_probe")
     assert exc_info.value.probe_name == "my_probe"
     assert exc_info.value.details == {"injection_label": "case_a"}
 
