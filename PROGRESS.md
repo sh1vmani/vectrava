@@ -1093,12 +1093,14 @@ changed behavior.
 
 State at end of this session:
 
-- Total commits: 95 (after this day-close lands)
-- Tests: 470 passing
+- Total commits: 100 (after this carry-forward update lands)
+- Tests: 496 passing
 - Probe inventory: dow 6, ipi 5, rag 5 (17 total), 6-6-5 split
 - CRITICAL probes: 2 (`ipi.exfiltration_attempt`, `rag.retrieval_permission_leak`)
 - Repository public; four workflows (CI, No Secrets, CodeQL, Scorecard) green
-- Vendor adapter seam in place; the dow path is migrated onto it
+- Vendor-abstraction arc units 1, 2a, 2b, 2c, 3, and 4 (slice 1) done; HEAD before
+  this update is 62a18cb. All three modules build requests through the selected
+  adapter; parsing is not migrated (`extract_chat_completion_content` stays final).
 
 Carry-forward closed:
 
@@ -1116,37 +1118,51 @@ Carry-forward closed:
 
 Carry-forward still pending:
 
-- Vendor-abstraction arc (Option C). Units 1 and 2a are done. Remaining:
-  - 2b: migrate the multi-turn helper (`exchange_turn`) and the ipi inline probes
-    onto the adapter. Central decision: `extract_chat_completion_content` is shared
-    by `exchange_turn` and eight inline content-consumers and raises two
-    test-pinned messages ("not a string" and "chat-completions"); 2b must retire it
-    or reimplement it over the adapter's `parse_response` while preserving both
-    messages. It is shared with rag, so 2c depends on what 2b leaves.
-  - 2c: migrate the rag probes onto the adapter and onto whatever 2b left of the
-    shared content parser.
-  - 3: add the second-vendor adapter; the motivating case is a second vendor's
-    native API, a non-chat-completions protocol. Pre-implementation task: verify
-    the vendor's request and response field names and enums against current API
-    docs before coding. Decision recorded: `model_substitution` is vendor-semantic
-    (it reads the echoed request model); a vendor that does not echo the model
-    makes that probe not-applicable, to be handled as an explicit skip rather than
-    a misleading finding, and documented in unit 5.
-  - 4: vendor selection. Locked design: a scan-level vendor flag defaulting to the
-    chat-completions vendor, so every existing scope and invocation keeps working.
-    The per-target scope-schema vendor field is deferred, because vendor is a
-    protocol property rather than an authorization property, and folding it into
-    the targets list collides with the exact-string membership check and the
-    base-URL validator. This is the least-reversible unit, a committed external
-    contract; design the flag name, default, and accepted values with care.
-  - 5: docs and an example scope for the new vendor.
-  Locked arc design: adapter seam (Architecture A); `NormalizedResponse` carries
+- Vendor-abstraction arc (Option C). Units 1, 2a, 2b, 2c, 3, and 4 (slice 1) are
+  done: a `VendorAdapter` `typing.Protocol`, a `NormalizedResponse` type, a
+  `ChatCompletionsAdapter` and a `MessagesAdapter`, and a `--vendor` flag that
+  selects the adapter once per scan and threads it on `ProbeContext.adapter`. All
+  three modules (dow, ipi, rag) plus the `exchange_turn` and `call_completion`
+  helpers build requests through the selected adapter. `NormalizedResponse` carries
   content, prompt/completion/total tokens, finish_reason, reported_model,
-  status_code, and raw, where raw is the escape hatch `error_amplification` and
-  `model_substitution` depend on; adapter identifier `ChatCompletionsAdapter` /
-  `chat_completions`, the protocol name and not a provider; `VendorAdapter` is a
-  `typing.Protocol`; finish_reason normalization is identity for the
-  chat-completions adapter, and future vendors map into its vocabulary.
+  status_code, and raw (the escape hatch `error_amplification` and
+  `model_substitution` reasoning depend on); the adapter identifier names the
+  protocol, not a provider; finish_reason is identity for chat-completions.
+  Locked facts from this arc:
+  - `extract_chat_completion_content` stays final. Request building was migrated
+    onto the adapter, but parsing was not: ipi, rag, and `exchange_turn` still parse
+    chat-completions responses through that helper, and only dow's `call_completion`
+    parses via the adapter's `parse_response`.
+  - The `--vendor` flag ships `chat_completions`-only and is the default, so every
+    existing scope and invocation is byte-identical on the wire. `messages` is a
+    built adapter but not a selectable vendor: `SUPPORTED_VENDORS` lists only
+    `chat_completions`, and `--vendor messages` is rejected with exit 2. The
+    per-target scope-schema vendor field stays deferred (vendor is a protocol
+    property, not an authorization property); scope files carry no vendor field.
+  - `model_substitution` reads the echoed request model, so a vendor that does not
+    echo the model makes the probe not-applicable. The messages protocol echoes the
+    model, so it is applicable there in principle. This nuance lives here in the
+    roadmap until a vendor-support matrix exists; it is not in user docs.
+  - The pre-commit and commit-msg AI-signature scan was narrowed to attribution
+    contexts (Co-Authored-By, Generated with, the noreply email, the code-tool URL)
+    so the `anthropic-version` protocol header passes content scanning. The hooks
+    are untracked (`.git/hooks` plus the global template, kept byte-identical). New
+    md5 baseline: pre-commit `63bfdbc131b8467a4ea4e9ba550a4171`, commit-msg
+    `125e78981f109daafa58946a22bca136`, prepare-commit-msg unchanged at
+    `323e9495c315b10084387a52a4be358a`.
+  Next scoped work, enabling the `messages` vendor. These land together; only when
+  all five are in does `messages` become a selectable value:
+  - (1) migrate ipi, rag, and `exchange_turn` parsing off
+    `extract_chat_completion_content` onto vendor-neutral parsing, reopening the
+    2b/2c lock.
+  - (2) rewire `call_completion` and the three inline dow probes (`rate_limit_bypass`,
+    `error_amplification`, `concurrency_amplification`) to build through the
+    selected adapter.
+  - (3) ITEM 1: dow `total_tokens` summing when the vendor reports no combined total.
+  - (4) ITEM 2: `error_amplification` vendor-aware error/usage parsing, or an explicit
+    not-applicable.
+  - (5) vendor-aware endpoint defaulting: probes currently pass an explicit
+    `endpoint_path` that would route a `messages` scan to `/v1/chat/completions`.
 - Test-fixture hex-token-literal sweep: standing convention to use low-entropy
   placeholders; an optional one-time sweep, not a closeable task.
 
