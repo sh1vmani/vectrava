@@ -128,6 +128,69 @@ class ChatCompletionsAdapter:
         )
 
 
+class MessagesAdapter:
+    """Adapter for the messages wire format.
+
+    A second target protocol. The model and a messages array ride in the request
+    body as in chat-completions, but the system prompt is a top-level system field
+    separate from messages, and the assistant reply comes back as a content-block
+    array rather than a single string. build_request lifts a leading system message
+    out of the messages list into that top-level field; parse_response joins the
+    text blocks, so a reply with no text block (for example tool use only) yields no
+    content.
+    """
+
+    def build_request(
+        self,
+        *,
+        target_base: str,
+        model: str,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        credential: str,
+        endpoint_path: str = "/v1/messages",
+    ) -> tuple[str, dict[str, object], dict[str, str]]:
+        """Build the messages URL, body, and headers, splitting out a leading system turn."""
+        url = build_url(target_base, endpoint_path)
+        body: dict[str, object] = {"model": model}
+        if messages and messages[0]["role"] == "system":
+            body["system"] = messages[0]["content"]
+            body["messages"] = messages[1:]
+        else:
+            body["messages"] = messages
+        body["max_tokens"] = max_tokens
+        headers = {
+            "X-Api-Key": credential,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        return url, body, headers
+
+    def parse_response(self, response: httpx.Response) -> NormalizedResponse:
+        """Best-effort, non-raising extraction of the fields probes consume."""
+        status_code = response.status_code
+        try:
+            body = response.json()
+        except ValueError:
+            return _empty(status_code, raw=None)
+        if not isinstance(body, dict):
+            return _empty(status_code, raw=body)
+
+        prompt_tokens, completion_tokens = _extract_messages_usage(body)
+        stop_reason = body.get("stop_reason")
+        raw_model = body.get("model")
+        return NormalizedResponse(
+            status_code=status_code,
+            content=_extract_message_content(body),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=None,
+            finish_reason=stop_reason if isinstance(stop_reason, str) else None,
+            reported_model=raw_model if isinstance(raw_model, str) else None,
+            raw=body,
+        )
+
+
 def _empty(status_code: int, *, raw: JsonValue | None) -> NormalizedResponse:
     """A NormalizedResponse with only the status and raw body populated."""
     return NormalizedResponse(
@@ -187,3 +250,36 @@ def _extract_usage(body: dict[str, object]) -> tuple[int | None, int | None, int
         _int_field("completion_tokens"),
         _int_field("total_tokens"),
     )
+
+
+def _extract_message_content(body: dict[str, object]) -> str | None:
+    """Join the text of every text block in the messages content array, else None."""
+    content = body.get("content")
+    if not isinstance(content, list):
+        return None
+    texts: list[str] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") != "text":
+            continue
+        text = block.get("text")
+        if isinstance(text, str):
+            texts.append(text)
+    return "".join(texts) if texts else None
+
+
+def _extract_messages_usage(body: dict[str, object]) -> tuple[int | None, int | None]:
+    """Read input/output token counts from the messages usage object; each None unless an int."""
+    usage = body.get("usage")
+    if not isinstance(usage, dict):
+        return None, None
+
+    def _int_field(name: str) -> int | None:
+        value = usage.get(name)
+        # bool is a subclass of int; exclude it so a stray True does not count as 1.
+        if isinstance(value, bool):
+            return None
+        return value if isinstance(value, int) else None
+
+    return _int_field("input_tokens"), _int_field("output_tokens")
