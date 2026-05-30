@@ -109,7 +109,6 @@ class CrossSourceContradictionProbe(Probe):
     estimated_tokens_per_run: ClassVar[int] = 3 * 500
     tags: ClassVar[tuple[str, ...]] = ("injection", "arbitration", "rag")
     requires_credentials: ClassVar[bool] = True
-    default_endpoint: ClassVar[str | None] = "/v1/chat/completions"
 
     def run(self, ctx: ProbeContext) -> list[Finding]:
         """Send each contradiction and flag any reply that emits the adversarial canary."""
@@ -130,7 +129,7 @@ class CrossSourceContradictionProbe(Probe):
         else:
             min_delay_s = 0.0
 
-        endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
+        endpoint_path = ctx.endpoint or ctx.adapter.default_endpoint_path
 
         findings: list[Finding] = []
         for label, chunks_template in INJECTION_PROMPTS:

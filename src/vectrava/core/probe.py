@@ -99,7 +99,6 @@ class Probe(ABC):
     estimated_tokens_per_run: ClassVar[int]
     tags: ClassVar[tuple[str, ...]] = ()
     requires_credentials: ClassVar[bool] = True
-    default_endpoint: ClassVar[str | None] = None
 
     _REQUIRED_CLASSVARS: ClassVar[tuple[str, ...]] = (
         "name",

@@ -95,7 +95,6 @@ class ErrorAmplificationProbe(Probe):
     estimated_tokens_per_run: ClassVar[int] = OVERSIZED_REPEAT + 3 * (30 + PROBE_MAX_TOKENS)
     tags: ClassVar[tuple[str, ...]] = ("dow", "cost", "error-path")
     requires_credentials: ClassVar[bool] = True
-    default_endpoint: ClassVar[str | None] = "/v1/chat/completions"
 
     def run(self, ctx: ProbeContext) -> list[Finding]:
         """Send each rejection shape and flag any error response that reports usage."""
@@ -132,7 +131,7 @@ class ErrorAmplificationProbe(Probe):
         else:
             min_delay_s = 0.0
 
-        endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
+        endpoint_path = ctx.endpoint or ctx.adapter.default_endpoint_path
         url = build_url(ctx.target, endpoint_path)
         headers = {
             "Authorization": f"Bearer {credential}",

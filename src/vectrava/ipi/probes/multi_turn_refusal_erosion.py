@@ -129,7 +129,6 @@ class MultiTurnRefusalErosionProbe(Probe):
     estimated_tokens_per_run: ClassVar[int] = len(LABELS) * _PER_CONVERSATION_EST
     tags: ClassVar[tuple[str, ...]] = ("injection", "jailbreak", "multi-turn", "ipi")
     requires_credentials: ClassVar[bool] = True
-    default_endpoint: ClassVar[str | None] = "/v1/chat/completions"
 
     def run(self, ctx: ProbeContext) -> list[Finding]:
         """Run each framed conversation and flag a codeword leak on the final turn."""
@@ -156,7 +155,7 @@ class MultiTurnRefusalErosionProbe(Probe):
         else:
             min_delay_s = 0.0
 
-        endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
+        endpoint_path = ctx.endpoint or ctx.adapter.default_endpoint_path
 
         findings: list[Finding] = []
         for label, opening_frame, framed_ask in LABELS:

@@ -86,7 +86,6 @@ class RefusalBypassProbe(Probe):
     estimated_tokens_per_run: ClassVar[int] = 3 * 400
     tags: ClassVar[tuple[str, ...]] = ("injection", "jailbreak", "ipi")
     requires_credentials: ClassVar[bool] = True
-    default_endpoint: ClassVar[str | None] = "/v1/chat/completions"
 
     def run(self, ctx: ProbeContext) -> list[Finding]:
         """Send each jailbreak framing and flag any reply that reveals the canary."""
@@ -105,7 +104,7 @@ class RefusalBypassProbe(Probe):
         else:
             min_delay_s = 0.0
 
-        endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
+        endpoint_path = ctx.endpoint or ctx.adapter.default_endpoint_path
 
         findings: list[Finding] = []
         for label, user_message in INJECTION_PROMPTS:

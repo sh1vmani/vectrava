@@ -48,7 +48,6 @@ class OutputPaddingProbe(Probe):
     estimated_tokens_per_run: ClassVar[int] = 4 * (30 + PROBE_MAX_TOKENS)
     tags: ClassVar[tuple[str, ...]] = ("dow", "cost", "padding")
     requires_credentials: ClassVar[bool] = True
-    default_endpoint: ClassVar[str | None] = "/v1/chat/completions"
 
     def run(self, ctx: ProbeContext) -> list[Finding]:
         """Probe each short-answer category and flag responses that pad past the ceiling."""
@@ -79,7 +78,7 @@ class OutputPaddingProbe(Probe):
         else:
             min_delay_s = 0.0
 
-        endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
+        endpoint_path = ctx.endpoint or ctx.adapter.default_endpoint_path
         url = build_url(ctx.target, endpoint_path)
 
         findings: list[Finding] = []

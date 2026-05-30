@@ -57,6 +57,8 @@ def build_url(target_base: str, endpoint_path: str) -> str:
 class VendorAdapter(Protocol):
     """Builds requests and parses responses for one target wire protocol."""
 
+    default_endpoint_path: str
+
     def build_request(
         self,
         *,
@@ -86,6 +88,8 @@ class ChatCompletionsAdapter:
     already speak: a messages array and the model in the request body, and the
     reply under choices[0].message.content.
     """
+
+    default_endpoint_path: str = "/v1/chat/completions"
 
     def build_request(
         self,
@@ -145,6 +149,8 @@ class MessagesAdapter:
     text blocks, so a reply with no text block (for example tool use only) yields no
     content.
     """
+
+    default_endpoint_path: str = "/v1/messages"
 
     def build_request(
         self,

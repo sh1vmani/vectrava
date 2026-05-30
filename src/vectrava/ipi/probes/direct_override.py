@@ -68,7 +68,6 @@ class DirectOverrideProbe(Probe):
     estimated_tokens_per_run: ClassVar[int] = 3 * 300
     tags: ClassVar[tuple[str, ...]] = ("injection", "prompt-injection")
     requires_credentials: ClassVar[bool] = True
-    default_endpoint: ClassVar[str | None] = "/v1/chat/completions"
 
     def run(self, ctx: ProbeContext) -> list[Finding]:
         """Send each injection and flag any reply that echoes the probe canary."""
@@ -87,7 +86,7 @@ class DirectOverrideProbe(Probe):
         else:
             min_delay_s = 0.0
 
-        endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
+        endpoint_path = ctx.endpoint or ctx.adapter.default_endpoint_path
 
         findings: list[Finding] = []
         for label, phrasing in INJECTION_PROMPTS:

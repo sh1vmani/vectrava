@@ -19,7 +19,7 @@ import httpx
 import structlog
 
 from vectrava.config.scope import ScopeFile
-from vectrava.core.adapters import ChatCompletionsAdapter
+from vectrava.core.adapters import ChatCompletionsAdapter, MessagesAdapter, VendorAdapter
 from vectrava.core.probe import ProbeContext
 from vectrava.dow.probes.token_amplification import TokenAmplificationProbe
 from vectrava.ipi.probes.direct_override import DirectOverrideProbe
@@ -38,7 +38,7 @@ def _scope() -> ScopeFile:
     )
 
 
-def _ctx(client: httpx.Client) -> ProbeContext:
+def _ctx(client: httpx.Client, *, adapter: VendorAdapter | None = None) -> ProbeContext:
     return ProbeContext(
         target="https://example.test",
         endpoint=None,
@@ -46,7 +46,7 @@ def _ctx(client: httpx.Client) -> ProbeContext:
         scope=_scope(),
         http=client,
         logger=structlog.get_logger(),
-        adapter=ChatCompletionsAdapter(),
+        adapter=adapter if adapter is not None else ChatCompletionsAdapter(),
         options={
             "model": "gpt-4o-mini",
             "threshold": 15.0,
@@ -110,3 +110,44 @@ def test_seam_dow_probe_builds_chat_completions_via_ctx_adapter() -> None:
         TokenAmplificationProbe().run(_ctx(client))
     assert captured
     _assert_chat_completions_wire(captured[0])
+
+
+# --- vendor-aware endpoint defaulting: a messages ctx resolves /v1/messages -
+
+
+def _assert_messages_wire(request: httpx.Request) -> None:
+    assert request.url.path == "/v1/messages"
+    assert request.headers["X-Api-Key"] == _CREDENTIAL
+    assert "Authorization" not in request.headers
+
+
+def _messages_handler(captured: list[httpx.Request]) -> Handler:
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "content": [{"type": "text", "text": "ok"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 5, "output_tokens": 5},
+            },
+        )
+
+    return handler
+
+
+def test_seam_ipi_probe_resolves_messages_endpoint() -> None:
+    captured: list[httpx.Request] = []
+    with httpx.Client(transport=httpx.MockTransport(_messages_handler(captured))) as client:
+        DirectOverrideProbe().run(_ctx(client, adapter=MessagesAdapter()))
+    assert captured
+    _assert_messages_wire(captured[0])
+
+
+def test_seam_dow_probe_resolves_messages_endpoint() -> None:
+    captured: list[httpx.Request] = []
+    with httpx.Client(transport=httpx.MockTransport(_messages_handler(captured))) as client:
+        TokenAmplificationProbe().run(_ctx(client, adapter=MessagesAdapter()))
+    assert captured
+    _assert_messages_wire(captured[0])

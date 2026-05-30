@@ -54,7 +54,6 @@ class TokenAmplificationProbe(Probe):
     estimated_tokens_per_run: ClassVar[int] = 5 * (30 + PROBE_MAX_TOKENS)
     tags: ClassVar[tuple[str, ...]] = ("dow", "cost", "amplification")
     requires_credentials: ClassVar[bool] = True
-    default_endpoint: ClassVar[str | None] = "/v1/chat/completions"
 
     def run(self, ctx: ProbeContext) -> list[Finding]:
         """Probe each category and emit a finding where the ratio meets the threshold."""
@@ -85,7 +84,7 @@ class TokenAmplificationProbe(Probe):
         else:
             min_delay_s = 0.0
 
-        endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
+        endpoint_path = ctx.endpoint or ctx.adapter.default_endpoint_path
         url = build_url(ctx.target, endpoint_path)
 
         findings: list[Finding] = []

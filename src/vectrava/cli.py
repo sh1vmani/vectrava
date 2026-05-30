@@ -391,7 +391,7 @@ def _run_scan(
                 probe = probe_cls()
                 ctx = ProbeContext(
                     target=target,
-                    endpoint=endpoint if endpoint is not None else probe.default_endpoint,
+                    endpoint=endpoint,
                     credentials=credentials if probe.requires_credentials else None,
                     scope=scope_file,
                     http=http,

@@ -103,7 +103,6 @@ class MultiTurnPersistenceProbe(Probe):
     estimated_tokens_per_run: ClassVar[int] = len(INJECTION_PROMPTS) * _PER_CONVERSATION_EST
     tags: ClassVar[tuple[str, ...]] = ("injection", "multi-turn", "ipi")
     requires_credentials: ClassVar[bool] = True
-    default_endpoint: ClassVar[str | None] = "/v1/chat/completions"
 
     def run(self, ctx: ProbeContext) -> list[Finding]:
         """Run each persistence injection as a conversation and flag late-turn leaks."""
@@ -130,7 +129,7 @@ class MultiTurnPersistenceProbe(Probe):
         else:
             min_delay_s = 0.0
 
-        endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
+        endpoint_path = ctx.endpoint or ctx.adapter.default_endpoint_path
 
         findings: list[Finding] = []
         for label, phrasing in INJECTION_PROMPTS:

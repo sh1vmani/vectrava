@@ -366,3 +366,30 @@ def test_adapter_for_messages_is_unregistered_and_raises() -> None:
 def test_adapter_for_unknown_raises() -> None:
     with pytest.raises(ValueError, match="unknown vendor"):
         adapter_for("nope")
+
+
+# --- default_endpoint_path stays in sync with build_request ----------------
+
+
+def test_chat_completions_default_endpoint_path_matches_build_request() -> None:
+    adapter = ChatCompletionsAdapter()
+    url, _, _ = adapter.build_request(
+        target_base="https://x",
+        model="m",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1,
+        credential="c",
+    )
+    assert httpx.URL(url).path == adapter.default_endpoint_path == "/v1/chat/completions"
+
+
+def test_messages_default_endpoint_path_matches_build_request() -> None:
+    adapter = MessagesAdapter()
+    url, _, _ = adapter.build_request(
+        target_base="https://x",
+        model="m",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=1,
+        credential="c",
+    )
+    assert httpx.URL(url).path == adapter.default_endpoint_path == "/v1/messages"

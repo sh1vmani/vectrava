@@ -70,7 +70,6 @@ class ConcurrencyAmplificationProbe(Probe):
     estimated_tokens_per_run: ClassVar[int] = _CONCURRENCY * (30 + PROBE_MAX_TOKENS)
     tags: ClassVar[tuple[str, ...]] = ("dow", "rate-limit", "concurrency", "infrastructure")
     requires_credentials: ClassVar[bool] = True
-    default_endpoint: ClassVar[str | None] = "/v1/chat/completions"
 
     def run(self, ctx: ProbeContext) -> list[Finding]:
         """Dispatch N concurrent requests and flag the absence of HTTP 429 across the burst."""
@@ -89,7 +88,7 @@ class ConcurrencyAmplificationProbe(Probe):
             )
         model = raw_model
 
-        endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
+        endpoint_path = ctx.endpoint or ctx.adapter.default_endpoint_path
         url, payload, headers = ctx.adapter.build_request(
             target_base=ctx.target,
             model=model,
