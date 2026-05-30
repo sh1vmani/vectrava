@@ -263,7 +263,7 @@ def test_malformed_final_turn_raises_probe_error() -> None:
             return httpx.Response(200, json={"model": "gpt-4o-mini"})
         return _resp("Continuing the scene.")
 
-    with _client(handler) as client, pytest.raises(ProbeError, match="chat-completions"):
+    with _client(handler) as client, pytest.raises(ProbeError, match="assistant message content"):
         MultiTurnRefusalErosionProbe().run(_ctx(client, options=options))
 
 

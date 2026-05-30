@@ -266,7 +266,7 @@ def test_malformed_turn_no_prior_leak_raises_probe_error() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"model": "gpt-4o-mini"})
 
-    with _client(handler) as client, pytest.raises(ProbeError, match="chat-completions"):
+    with _client(handler) as client, pytest.raises(ProbeError, match="assistant message content"):
         MultiTurnPersistenceProbe().run(_ctx(client))
 
 

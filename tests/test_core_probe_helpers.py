@@ -91,7 +91,7 @@ def test_exchange_turn_malformed_body_raises_probe_error() -> None:
         return httpx.Response(200, json={"model": "gpt-4o-mini"})
 
     messages: list[dict[str, str]] = [{"role": "user", "content": "Hi"}]
-    with _client(handler) as client, pytest.raises(ProbeError, match="chat-completions"):
+    with _client(handler) as client, pytest.raises(ProbeError, match="assistant message content"):
         _call(client, messages)
 
     assert len(messages) == 1
@@ -156,7 +156,7 @@ def test_content_or_raise_returns_string_content() -> None:
 
 
 def test_content_or_raise_raises_on_none_content() -> None:
-    with pytest.raises(ProbeError, match="chat-completions"):
+    with pytest.raises(ProbeError, match="assistant message content"):
         content_or_raise(_normalized(None), "label", "probe")
 
 

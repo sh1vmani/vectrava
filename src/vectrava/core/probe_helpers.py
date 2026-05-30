@@ -59,7 +59,7 @@ def content_or_raise(normalized: NormalizedResponse, label: str, probe_name: str
     if isinstance(content, str):
         return content
     raise ProbeError(
-        "target response was not a chat-completions object with message content",
+        "target response did not contain assistant message content",
         probe_name=probe_name,
         details={"injection_label": label},
     )
@@ -155,8 +155,8 @@ def exchange_turn(
         The assistant message content from this turn.
 
     Raises:
-        ProbeError: on a non-2xx status, or when the response is not a
-            chat-completions object with string message content.
+        ProbeError: on a non-2xx status, or when the response did not contain
+            assistant message content.
     """
     url, payload, headers = adapter.build_request(
         target_base=target_base,
