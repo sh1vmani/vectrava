@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
-from vectrava.core.adapters import build_url
+from vectrava.core.adapters import ChatCompletionsAdapter, build_url
 from vectrava.core.http import post_with_retry
 from vectrava.core.probe import Probe, ProbeError
 from vectrava.core.registry import register
@@ -113,6 +113,18 @@ class ErrorAmplificationProbe(Probe):
                 probe_name=self.name,
             )
         model = raw_model
+
+        # This probe detects billing on rejected requests by reading a usage block
+        # off the error body. Only the chat-completions protocol reports usage that
+        # way; against any other vendor the signal cannot appear, so the probe is
+        # not applicable and skips without sending requests.
+        if not isinstance(ctx.adapter, ChatCompletionsAdapter):
+            ctx.logger.info(
+                "probe not applicable for the selected vendor; this vendor does not "
+                "report token usage on rejected requests, so billing on rejection "
+                "cannot be measured"
+            )
+            return []
 
         raw_max_rps = ctx.options.get("max_rps")
         if isinstance(raw_max_rps, (int, float)) and raw_max_rps > 0:

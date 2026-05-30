@@ -19,7 +19,7 @@ from pydantic import JsonValue
 
 from vectrava.config.scope import ScopeFile
 from vectrava.core import registry
-from vectrava.core.adapters import ChatCompletionsAdapter
+from vectrava.core.adapters import ChatCompletionsAdapter, MessagesAdapter, VendorAdapter
 from vectrava.core.probe import ProbeContext, ProbeError
 from vectrava.core.registry import register
 from vectrava.core.result import Severity
@@ -50,6 +50,7 @@ def _ctx(
     endpoint: str | None = None,
     credentials: str | None = "test-key",
     options: Mapping[str, JsonValue] | None = None,
+    adapter: VendorAdapter | None = None,
 ) -> ProbeContext:
     return ProbeContext(
         target=target,
@@ -58,7 +59,7 @@ def _ctx(
         scope=_scope(),
         http=client,
         logger=structlog.get_logger(),
-        adapter=ChatCompletionsAdapter(),
+        adapter=adapter if adapter is not None else ChatCompletionsAdapter(),
         options=options if options is not None else {"model": "gpt-4o-mini"},
     )
 
@@ -86,6 +87,20 @@ def test_probe_is_registered_under_dow() -> None:
     probes = registry.by_module("dow")
     assert ErrorAmplificationProbe in probes
     assert any(cls.name == "error_amplification" for cls in probes)
+
+
+def test_not_applicable_for_non_chat_completions_vendor() -> None:
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(200, json={})
+
+    with _client(handler) as client:
+        findings = ErrorAmplificationProbe().run(_ctx(client, adapter=MessagesAdapter()))
+    # A non-chat-completions vendor is skipped without sending any request.
+    assert findings == []
+    assert calls == []
 
 
 def test_error_response_with_usage_emits_finding() -> None:
