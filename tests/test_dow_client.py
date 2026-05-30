@@ -197,3 +197,23 @@ def test_2xx_with_usage_returns_completion_result() -> None:
     assert result.http_status == 200
     assert result.model == "gpt-4o-mini"
     assert result.latency_ms > 0
+
+
+def test_2xx_usage_without_total_sums_components() -> None:
+    # A vendor that reports input and output counts but no combined total: the
+    # client sums the components rather than raising on the missing total.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "model": "gpt-4o-mini",
+                "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 30},
+            },
+        )
+
+    with _client(handler) as client:
+        result = _call(client)
+    assert result.usage.prompt_tokens == 12
+    assert result.usage.completion_tokens == 30
+    assert result.usage.total_tokens == 42

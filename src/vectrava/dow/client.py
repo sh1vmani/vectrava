@@ -137,21 +137,24 @@ def call_completion(
         )
 
     normalized = adapter.parse_response(response)
-    if (
-        normalized.prompt_tokens is None
-        or normalized.completion_tokens is None
-        or normalized.total_tokens is None
-    ):
+    if normalized.prompt_tokens is None or normalized.completion_tokens is None:
         raise ProbeError(
             "target response missing token usage; cannot measure amplification",
             details={"body": response.text[:_BODY_PREVIEW_CHARS]},
         )
 
+    # A vendor may report input and output counts without a combined total; sum
+    # them so amplification accounting works regardless. A present total (every
+    # chat-completions reply) is used as-is, keeping that path byte-identical.
+    total = normalized.total_tokens
+    if total is None:
+        total = normalized.prompt_tokens + normalized.completion_tokens
+
     return CompletionResult(
         usage=TokenUsage(
             prompt_tokens=normalized.prompt_tokens,
             completion_tokens=normalized.completion_tokens,
-            total_tokens=normalized.total_tokens,
+            total_tokens=total,
         ),
         finish_reason=normalized.finish_reason,
         latency_ms=latency_ms,
