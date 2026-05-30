@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING, ClassVar, cast
 
 import httpx
 
-from vectrava.core.adapters import build_url
 from vectrava.core.http import post_no_retry
 from vectrava.core.probe import Probe, ProbeError
 from vectrava.core.registry import register
@@ -83,16 +82,14 @@ class RateLimitBypassProbe(Probe):
         model = raw_model
 
         endpoint_path = ctx.endpoint or self.default_endpoint or "/v1/chat/completions"
-        url = build_url(ctx.target, endpoint_path)
-        payload: dict[str, object] = {
-            "model": model,
-            "messages": [{"role": "user", "content": PROBE_PROMPT}],
-            "max_tokens": PROBE_MAX_TOKENS,
-        }
-        headers = {
-            "Authorization": f"Bearer {credential}",
-            "Content-Type": "application/json",
-        }
+        url, payload, headers = ctx.adapter.build_request(
+            target_base=ctx.target,
+            model=model,
+            messages=[{"role": "user", "content": PROBE_PROMPT}],
+            max_tokens=PROBE_MAX_TOKENS,
+            credential=credential,
+            endpoint_path=endpoint_path,
+        )
 
         # The burst deliberately ignores ctx.options["max_rps"]: its purpose is to
         # overpace, and post_no_retry applies no client-side pacing.
