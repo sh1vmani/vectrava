@@ -26,6 +26,7 @@ runner = CliRunner()
 _PINNED_MODEL = "gpt-5.4-nano"
 
 _captured_options: list[Mapping[str, JsonValue]] = []
+_captured_adapters: list[str] = []
 
 
 class _CapturingProbe(Probe):
@@ -40,6 +41,7 @@ class _CapturingProbe(Probe):
 
     def run(self, ctx: ProbeContext) -> list[Finding]:
         _captured_options.append(dict(ctx.options))
+        _captured_adapters.append(type(ctx.adapter).__name__)
         return []
 
 
@@ -47,9 +49,11 @@ class _CapturingProbe(Probe):
 def _clean_registry() -> Iterator[None]:
     registry.clear()
     _captured_options.clear()
+    _captured_adapters.clear()
     yield
     registry.clear()
     _captured_options.clear()
+    _captured_adapters.clear()
 
 
 def _combined(result: Any) -> str:
@@ -1090,10 +1094,13 @@ def test_vendor_chat_completions_explicit_accepted(
     assert result.exit_code == 0
 
 
-def test_vendor_messages_rejected_exit_2(
+def test_vendor_messages_accepted(
     tmp_path: Path, signed_scope_factory: Callable[..., Path]
 ) -> None:
+    registry.register(_CapturingProbe)
     scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    # messages is now a selectable vendor: the scan is accepted, not exit 2.
     result = runner.invoke(
         app,
         [
@@ -1105,10 +1112,13 @@ def test_vendor_messages_rejected_exit_2(
             "http://allowed",
             "--vendor",
             "messages",
+            "--format",
+            "json",
+            "--output",
+            str(out),
         ],
     )
-    assert result.exit_code == 2
-    assert "Unsupported vendor 'messages'. Supported: chat_completions." in _combined(result)
+    assert result.exit_code == 0
 
 
 def test_vendor_unknown_rejected_exit_2(
@@ -1120,4 +1130,34 @@ def test_vendor_unknown_rejected_exit_2(
         ["scan", "dow", "--scope", str(scope), "--target", "http://allowed", "--vendor", "garbage"],
     )
     assert result.exit_code == 2
-    assert "Unsupported vendor 'garbage'. Supported: chat_completions." in _combined(result)
+    text = _combined(result)
+    assert "Unsupported vendor 'garbage'. Supported: chat_completions, messages." in text
+
+
+def test_vendor_messages_threads_messages_adapter(
+    tmp_path: Path, signed_scope_factory: Callable[..., Path]
+) -> None:
+    registry.register(_CapturingProbe)
+    scope = signed_scope_factory(tmp_path, targets=["http://allowed"])
+    out = tmp_path / "out.json"
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            "dow",
+            "--scope",
+            str(scope),
+            "--target",
+            "http://allowed",
+            "--vendor",
+            "messages",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+    )
+    # Gate open (not exit 2) and the messages adapter reached the probe via ctx.
+    # The wire shape (/v1/messages, X-Api-Key) is proven in test_vendor_seam.
+    assert result.exit_code != 2
+    assert _captured_adapters == ["MessagesAdapter"]

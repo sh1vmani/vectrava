@@ -480,7 +480,7 @@ def scan_dow(
     ] = "sarif",
     vendor: Annotated[
         str,
-        typer.Option("--vendor", help="Target API protocol: chat_completions."),
+        typer.Option("--vendor", help="Target API protocol: chat_completions or messages."),
     ] = "chat_completions",
     threshold: Annotated[
         float,
@@ -619,7 +619,7 @@ def scan_ipi(
     ] = None,
     vendor: Annotated[
         str,
-        typer.Option("--vendor", help="Target API protocol: chat_completions."),
+        typer.Option("--vendor", help="Target API protocol: chat_completions or messages."),
     ] = "chat_completions",
     max_turns: Annotated[
         int,
@@ -738,7 +738,7 @@ def scan_rag(
     ] = None,
     vendor: Annotated[
         str,
-        typer.Option("--vendor", help="Target API protocol: chat_completions."),
+        typer.Option("--vendor", help="Target API protocol: chat_completions or messages."),
     ] = "chat_completions",
     num_sources: Annotated[
         int,

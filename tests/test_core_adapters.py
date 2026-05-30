@@ -348,19 +348,17 @@ def test_messages_parse_raw_populated_on_success() -> None:
 # --- vendor selection factory ----------------------------------------------
 
 
-def test_supported_vendors_contains_chat_completions_only() -> None:
+def test_supported_vendors_contains_chat_completions_and_messages() -> None:
     assert "chat_completions" in SUPPORTED_VENDORS
-    # messages exists as an adapter but is not a selectable vendor yet.
-    assert "messages" not in SUPPORTED_VENDORS
+    assert "messages" in SUPPORTED_VENDORS
 
 
 def test_adapter_for_chat_completions_returns_chat_adapter() -> None:
     assert isinstance(adapter_for("chat_completions"), ChatCompletionsAdapter)
 
 
-def test_adapter_for_messages_is_unregistered_and_raises() -> None:
-    with pytest.raises(ValueError, match="unknown vendor"):
-        adapter_for("messages")
+def test_adapter_for_messages_returns_messages_adapter() -> None:
+    assert isinstance(adapter_for("messages"), MessagesAdapter)
 
 
 def test_adapter_for_unknown_raises() -> None:

@@ -300,12 +300,12 @@ def _extract_messages_usage(body: dict[str, object]) -> tuple[int | None, int | 
 # Vendor selection. SUPPORTED_VENDORS is the single source of truth for which
 # protocol ids the CLI accepts; the factory registers an adapter for each. They
 # must stay in sync: only ids in SUPPORTED_VENDORS are registered, so a value the
-# CLI accepts always resolves to an adapter. MessagesAdapter exists but is not
-# registered yet; it is wired in when the messages vendor path is enabled.
-SUPPORTED_VENDORS: tuple[str, ...] = ("chat_completions",)
+# CLI accepts always resolves to an adapter.
+SUPPORTED_VENDORS: tuple[str, ...] = ("chat_completions", "messages")
 
 _VENDOR_ADAPTERS: dict[str, Callable[[], VendorAdapter]] = {
     "chat_completions": ChatCompletionsAdapter,
+    "messages": MessagesAdapter,
 }
 
 
