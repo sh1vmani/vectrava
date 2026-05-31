@@ -57,7 +57,7 @@ def call_completion(
     timeout_s: float = 60.0,
     min_delay_s: float = 0.0,
 ) -> CompletionResult:
-    """Send one benign prompt to an OpenAI-compatible chat endpoint.
+    """Send one benign prompt to the target completion endpoint.
 
     Reads no environment; `credential` is the resolved BYOK value, never an
     env-var name. Transient failures are retried with backoff before translation.
@@ -70,7 +70,8 @@ def call_completion(
         adapter: Vendor adapter used to build the request and parse the response.
         target_base: Base target URL; the adapter appends the endpoint path.
         endpoint_path: Path appended to the base to form the request URL.
-        credential: Resolved API key value, sent as a Bearer token.
+        credential: Resolved API key value, sent in the protocol's authentication
+            header.
         model: Model identifier placed in the request body.
         prompt: The single user prompt to send.
         max_tokens: Output cap requested from the target.

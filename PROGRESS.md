@@ -1188,7 +1188,9 @@ Reference state before this docs commit: HEAD `51d3b54`, 500 tests passing.
 Carry-forward still pending (deferred cosmetics, not behavior):
 
 - `dow/client.py` `call_completion`: the `"/v1/chat/completions"` parameter
-  default is a cosmetic vestige, overridden by all production callers.
+  default is overridden explicitly by all three production probes, but the
+  `test_dow_client.py` `_call` helper relies on it, so retiring the default is a
+  scoped test change and stays deferred.
 - `probe_helpers.py` `exchange_turn` and `dow/client.py` `call_completion`: the
   "sent as a Bearer token" docstrings are inaccurate for `messages`, which
   authenticates with an `X-Api-Key` header.

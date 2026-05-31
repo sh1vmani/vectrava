@@ -122,7 +122,7 @@ def exchange_turn(
     timeout: float = 60.0,
     min_delay_s: float = 0.0,
 ) -> str:
-    """Run one chat-completions turn against the target and capture the reply.
+    """Run one request/response turn against the target and capture the reply.
 
     Sends the current `messages` list, fails fast on an HTTP error, extracts the
     assistant content, and appends it back so the conversation grows turn by turn.
@@ -141,8 +141,9 @@ def exchange_turn(
             appended on success).
         model: Model identifier placed in the request body.
         max_tokens: Output cap requested from the target.
-        credential: Resolved BYOK value, sent as a Bearer token. Headers are
-            built internally; the caller does not pass a header dict.
+        credential: Resolved BYOK value, sent in the protocol's authentication
+            header. Headers are built internally; the caller does not pass a
+            header dict.
         probe_name: The calling probe's name, used for error attribution.
         label: The probe-internal label of the current injection or framing case.
         turn_index: The 1-based conversation turn index, combined with `label`
