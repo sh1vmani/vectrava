@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `messages` is now a selectable vendor for scans. Pass `--vendor messages` to
+  any `scan` subcommand to target that protocol.
 - A `--vendor` flag and per-scan adapter selection. Each `scan` subcommand
   accepts `--vendor` to pick the target API protocol; it defaults to the
   chat-completions protocol, so existing scans are unchanged on the wire. The

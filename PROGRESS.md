@@ -1133,11 +1133,11 @@ Carry-forward still pending:
     onto the adapter, but parsing was not: ipi, rag, and `exchange_turn` still parse
     chat-completions responses through that helper, and only dow's `call_completion`
     parses via the adapter's `parse_response`.
-  - The `--vendor` flag ships `chat_completions`-only and is the default, so every
-    existing scope and invocation is byte-identical on the wire. `messages` is a
-    built adapter but not a selectable vendor: `SUPPORTED_VENDORS` lists only
-    `chat_completions`, and `--vendor messages` is rejected with exit 2. The
-    per-target scope-schema vendor field stays deferred (vendor is a protocol
+  - At this close the `--vendor` flag shipped `chat_completions`-only as the
+    default, so every existing scope and invocation was byte-identical on the
+    wire, and `messages` was a built adapter that was not yet a selectable
+    vendor. That gate has since flipped; see the Day 8 close (2026-05-31) below.
+    The per-target scope-schema vendor field stays deferred (vendor is a protocol
     property, not an authorization property); scope files carry no vendor field.
   - `model_substitution` reads the echoed request model, so a vendor that does not
     echo the model makes the probe not-applicable. The messages protocol echoes the
@@ -1150,19 +1150,8 @@ Carry-forward still pending:
     md5 baseline: pre-commit `63bfdbc131b8467a4ea4e9ba550a4171`, commit-msg
     `125e78981f109daafa58946a22bca136`, prepare-commit-msg unchanged at
     `323e9495c315b10084387a52a4be358a`.
-  Next scoped work, enabling the `messages` vendor. These land together; only when
-  all five are in does `messages` become a selectable value:
-  - (1) migrate ipi, rag, and `exchange_turn` parsing off
-    `extract_chat_completion_content` onto vendor-neutral parsing, reopening the
-    2b/2c lock.
-  - (2) rewire `call_completion` and the three inline dow probes (`rate_limit_bypass`,
-    `error_amplification`, `concurrency_amplification`) to build through the
-    selected adapter.
-  - (3) ITEM 1: dow `total_tokens` summing when the vendor reports no combined total.
-  - (4) ITEM 2: `error_amplification` vendor-aware error/usage parsing, or an explicit
-    not-applicable.
-  - (5) vendor-aware endpoint defaulting: probes currently pass an explicit
-    `endpoint_path` that would route a `messages` scan to `/v1/chat/completions`.
+  This enable-messages work is now complete; see the Day 8 close (2026-05-31)
+  below for the five items recorded as closed and mapped to their commits.
 - Test-fixture hex-token-literal sweep: standing convention to use low-entropy
   placeholders; an optional one-time sweep, not a closeable task.
 
@@ -1175,6 +1164,43 @@ refactor(ipi) and refactor(rag), extend it to four or five consecutive refactor
 commits. That is accepted as one staged migration but is the project's longest
 same-character stretch; the alternative, interleaving artificial non-refactor
 commits, is worse.
+
+### Day 8 close (2026-05-31)
+
+The enable-messages arc is complete. `messages` is now a selectable vendor:
+`--vendor messages` runs every probe through the messages adapter. The five
+items the Day 7 close listed as next scoped work all landed:
+
+- ipi, rag, and `exchange_turn` parsing migrated off
+  `extract_chat_completion_content` onto vendor-neutral parsing, and the dow
+  request and parse paths were rewired through the selected adapter -> `6ca9c61`.
+- dow `total_tokens` now sums the prompt and completion components when the
+  vendor reports no combined total -> `ff44c56`.
+- `error_amplification` is skipped as not applicable for non-chat-completions
+  vendors -> `1cb736d`.
+- vendor-aware endpoint defaulting: the default endpoint is resolved from the
+  selected adapter, and the missing-content error was made protocol-neutral
+  -> `e17d622`, `e4730b8`.
+- the gate flipped so `messages` is a selectable vendor -> `51d3b54`.
+
+Reference state before this docs commit: HEAD `51d3b54`, 500 tests passing.
+
+Carry-forward still pending (deferred cosmetics, not behavior):
+
+- `dow/client.py` `call_completion`: the `"/v1/chat/completions"` parameter
+  default is a cosmetic vestige, overridden by all production callers.
+- `probe_helpers.py` `exchange_turn` and `dow/client.py` `call_completion`: the
+  "sent as a Bearer token" docstrings are inaccurate for `messages`, which
+  authenticates with an `X-Api-Key` header.
+- `probe_helpers.py` `exchange_turn` summary docstring still says
+  "chat-completions turn"; the primitive is protocol-general now.
+
+Documented `messages` behaviors (not bugs):
+
+- `DEFAULT_MODEL` is a chat-flavored id, so a `messages` scan with no `--model`
+  returns HTTP 400. Pass a `--model` valid for the messages protocol.
+- The pricing table carries no messages models, so a `messages` cost estimate
+  uses the placeholder-rate fallback with its existing stderr warning.
 
 ### Not done
 

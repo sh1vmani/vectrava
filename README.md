@@ -200,7 +200,10 @@ the cost confirmation prompt that fires above the confirmation threshold,
 `--format` selects the report format (`sarif`, `json`, or `html`), `--output`
 sets the report path, `--max-requests-per-second` caps the outbound request rate,
 `--audit-log` sets the path for the append-only audit record, and `--vendor`
-selects the target API protocol and accepts `chat_completions`, the default.
+selects the target API protocol and accepts `chat_completions` (the default) or
+`messages`. A `messages` scan needs a `--model` valid for that protocol; the
+default model id is a chat-completions label, so a `messages` scan with no
+`--model` override returns HTTP 400.
 `scan dow` adds
 `--threshold` and `--padding-threshold` to tune its cost-amplification cutoffs,
 `scan ipi` adds `--max-turns` to set the multi-turn conversation length, and
