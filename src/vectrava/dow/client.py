@@ -1,7 +1,7 @@
 """HTTP client wrapper for Denial-of-Wallet probes.
 
-A single synchronous helper, `call_completion`, sends one prompt to an
-OpenAI-compatible chat-completions endpoint and returns normalized token
+A single synchronous helper, `call_completion`, sends one prompt to the
+target completion endpoint and returns normalized token
 accounting. It reads no environment: the caller supplies the already-resolved
 BYOK credential. Transient failures (429, 5xx, transport errors, timeouts) are
 retried with backoff via `post_with_retry`; once retries are exhausted every
