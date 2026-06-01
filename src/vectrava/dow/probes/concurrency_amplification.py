@@ -12,20 +12,20 @@ fail this one (five concurrent requests all complete before the counter ticks).
 
 Detection is deterministic and count-based. The probe dispatches N identical
 requests through ThreadPoolExecutor so they are genuinely in flight at the same
-time, then tallies their statuses. Any HTTP 429 means the target enforced a
-concurrency or rate guardrail; no 429 with N-1-or-more 200s means the operator's
-bill scales linearly with N on a single credential. The probe sends each request
-through post_no_retry, not the retrying client path, because a retry on 429
-would mask the very signal the probe exists to observe. Per-request transport
-errors are captured (recorded with status -1) rather than aborting the whole
-burst, so a single transient drop does not invalidate the run; only an all-fail
-burst raises ProbeError.
+time, then tallies their statuses. A throttling response (HTTP 429, 503, or 529)
+means the target enforced a concurrency or rate guardrail; no throttling status
+with N-1-or-more 200s means the operator's bill scales linearly with N on a
+single credential. The probe sends each request through post_no_retry, not the
+retrying client path, because a retry on a throttling status would mask the very
+signal the probe exists to observe. Per-request transport errors are captured
+(recorded with status -1) rather than aborting the whole burst, so a single
+transient drop does not invalidate the run; only an all-fail burst raises
+ProbeError.
 
 Two known limitations:
-- Strict 429-only detection may miss targets that shed concurrency load with
-  HTTP 503/529 or by dropping connections; those are guardrails too, but this
-  probe treats only a 429 as evidence of enforcement. Broadening the signal is
-  a future enhancement, coupled with the same broadening on rate_limit_bypass.
+- A target that sheds concurrency load only by dropping connections rather than
+  returning a throttling status is recorded as a transport drop (status -1), not
+  as enforcement.
 - Scan-ordering bleed: a target that enforces per-credential or per-IP limits
   may stay throttled after this burst, which can perturb probes that run later
   in the same scan. Prefer running this probe via --only, or last in a scan.
@@ -43,6 +43,7 @@ from vectrava.core.http import post_no_retry
 from vectrava.core.probe import Probe, ProbeError
 from vectrava.core.registry import register
 from vectrava.core.result import Severity
+from vectrava.dow.constants import ENFORCEMENT_STATUSES
 
 if TYPE_CHECKING:
     from pydantic import JsonValue
@@ -57,14 +58,14 @@ PROBE_PROMPT: str = "ping"
 
 @register
 class ConcurrencyAmplificationProbe(Probe):
-    """Flags chat-completions endpoints that serve N concurrent requests on one credential."""
+    """Flags endpoints that serve N concurrent requests on one credential without throttling."""
 
     name: ClassVar[str] = "concurrency_amplification"
     module: ClassVar[str] = "dow"
     description: ClassVar[str] = (
         "Dispatches a small burst of identical requests concurrently on one credential and "
-        "flags the endpoint when most return 200 and none return HTTP 429, indicating absent "
-        "concurrency-level rate limiting."
+        "flags the endpoint when most return 200 and none draw a throttling response "
+        "(HTTP 429, 503, or 529), indicating absent concurrency-level rate limiting."
     )
     baseline_severity: ClassVar[Severity] = Severity.MEDIUM
     estimated_tokens_per_run: ClassVar[int] = _CONCURRENCY * (30 + PROBE_MAX_TOKENS)
@@ -125,12 +126,15 @@ class ConcurrencyAmplificationProbe(Probe):
             key = str(status)
             status_counts[key] = status_counts.get(key, 0) + 1
 
-        saw_429 = status_counts.get("429", 0) > 0
+        saw_enforcement = any(
+            status_counts.get(str(status), 0) > 0 for status in ENFORCEMENT_STATUSES
+        )
         served_200 = status_counts.get("200", 0)
 
-        # Any 429 means the target enforced a concurrency or rate guardrail; otherwise
-        # require N-1 served 200s before firing, tolerating a single transient drop.
-        if saw_429 or served_200 < _CONCURRENCY - 1:
+        # A throttling status (429, 503, or 529) means the target enforced a concurrency
+        # or rate guardrail; otherwise require N-1 served 200s before firing, tolerating
+        # a single transient drop.
+        if saw_enforcement or served_200 < _CONCURRENCY - 1:
             return []
 
         evidence: dict[str, JsonValue] = {
@@ -140,15 +144,15 @@ class ConcurrencyAmplificationProbe(Probe):
                 [{"index": i, "status": s, "elapsed_ms": round(e, 1)} for i, s, e in results],
             ),
             "status_counts": cast("dict[str, JsonValue]", dict(status_counts)),
-            "saw_429": saw_429,
+            "saw_enforcement": saw_enforcement,
             "served_200": served_200,
             "endpoint": endpoint_path,
         }
         finding = self.make_finding(
             message=(
                 f"endpoint served {served_200} of {_CONCURRENCY} concurrent requests on one "
-                "credential with no HTTP 429; concurrency-level rate-limit hardening is "
-                "absent or ineffective."
+                "credential with no throttling response (HTTP 429, 503, or 529); "
+                "concurrency-level rate-limit hardening is absent or ineffective."
             ),
             target=url,
             evidence=evidence,

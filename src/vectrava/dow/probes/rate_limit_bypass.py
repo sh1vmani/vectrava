@@ -1,26 +1,27 @@
 """Rate-limit bypass probe.
 
 Sends a deterministic burst of identical minimal requests faster than any
-reasonable service-level rate limit and checks whether the target enforces HTTP
-429 (Too Many Requests). Zero 429s across the burst means the endpoint served
-every request unthrottled: rate-limit hardening is absent or set above the tested
-rate, leaving the endpoint open to unbounded cost exposure. This is a
-Denial-of-Wallet vector by absent infrastructure, distinct from the four
+reasonable service-level rate limit and checks whether the target pushes back
+with a throttling response. HTTP 429 (Too Many Requests), 503 (Service
+Unavailable), and 529 (overloaded) all count as enforcement. None of them across
+the burst means the endpoint served every request unthrottled: rate-limit
+hardening is absent or set above the tested rate, leaving the endpoint open to
+unbounded cost exposure. This is a Denial-of-Wallet vector by absent
+infrastructure, distinct from the four
 token-accounting dow probes (token_amplification, output_padding,
 model_substitution, error_amplification), which measure per-request waste rather
 than the absence of an infrastructure-level guardrail.
 
 Detection is deterministic and count-based. No regex matching of model intent and
-no LLM judge: the detection signal is the presence or absence of HTTP 429 across
-a deterministic burst. The probe sends each request through post_no_retry, not
-the retrying client path, because a retry on 429 would mask the very signal the
-probe exists to observe.
+no LLM judge: the detection signal is the presence or absence of a throttling
+status (429, 503, or 529) across a deterministic burst. The probe sends each
+request through post_no_retry, not the retrying client path, because a retry on a
+throttling status would mask the very signal the probe exists to observe.
 
 Two known limitations:
-- Strict 429-only detection may miss targets that shed load with HTTP 503/529 or
-  by dropping connections; those are rate-limit defenses too, but this probe
-  treats only a 429 as evidence of enforcement. Broadening the signal is a future
-  enhancement.
+- A target that sheds load only by dropping connections rather than returning a
+  throttling status is not classified as enforcement; a transport failure during
+  the burst raises ProbeError instead.
 - Scan-ordering bleed: a target that enforces per-credential or per-IP limits may
   stay throttled after this burst, which can perturb probes that run later in the
   same scan. Prefer running this probe via --only, or last in a scan.
@@ -36,6 +37,7 @@ from vectrava.core.http import post_no_retry
 from vectrava.core.probe import Probe, ProbeError
 from vectrava.core.registry import register
 from vectrava.core.result import Severity
+from vectrava.dow.constants import ENFORCEMENT_STATUSES
 
 if TYPE_CHECKING:
     from pydantic import JsonValue
@@ -50,13 +52,14 @@ PROBE_PROMPT: str = "ping"
 
 @register
 class RateLimitBypassProbe(Probe):
-    """Flags chat-completions endpoints that serve a request burst with no HTTP 429."""
+    """Flags endpoints that serve a request burst with no throttling response."""
 
     name: ClassVar[str] = "rate_limit_bypass"
     module: ClassVar[str] = "dow"
     description: ClassVar[str] = (
         "Sends a deterministic burst of minimal requests and flags the endpoint when "
-        "none are answered with HTTP 429, indicating absent rate-limit hardening."
+        "none draw a throttling response (HTTP 429, 503, or 529), indicating absent "
+        "rate-limit hardening."
     )
     baseline_severity: ClassVar[Severity] = Severity.MEDIUM
     estimated_tokens_per_run: ClassVar[int] = _BURST_SIZE * (30 + PROBE_MAX_TOKENS)
@@ -64,7 +67,7 @@ class RateLimitBypassProbe(Probe):
     requires_credentials: ClassVar[bool] = True
 
     def run(self, ctx: ProbeContext) -> list[Finding]:
-        """Burst the endpoint and flag the absence of HTTP 429 across the burst."""
+        """Burst the endpoint and flag the absence of a throttling response."""
         if ctx.credentials is None:
             raise ProbeError(
                 "rate_limit_bypass requires credentials but none were provided",
@@ -105,20 +108,23 @@ class RateLimitBypassProbe(Probe):
             code = str(response.status_code)
             status_counts[code] = status_counts.get(code, 0) + 1
 
-        saw_429 = status_counts.get("429", 0) > 0
-        if saw_429:
+        saw_enforcement = any(
+            status_counts.get(str(status), 0) > 0 for status in ENFORCEMENT_STATUSES
+        )
+        if saw_enforcement:
             return []
 
         evidence: dict[str, JsonValue] = {
             "burst_size": _BURST_SIZE,
             "status_counts": cast("dict[str, JsonValue]", dict(status_counts)),
-            "saw_429": saw_429,
+            "saw_enforcement": saw_enforcement,
             "endpoint": endpoint_path,
         }
         finding = self.make_finding(
             message=(
-                f"endpoint served {_BURST_SIZE} consecutive requests with no HTTP 429; "
-                "rate-limit hardening is absent or ineffective."
+                f"endpoint served {_BURST_SIZE} consecutive requests with no throttling "
+                "response (HTTP 429, 503, or 529); rate-limit hardening is absent or "
+                "ineffective."
             ),
             target=url,
             evidence=evidence,

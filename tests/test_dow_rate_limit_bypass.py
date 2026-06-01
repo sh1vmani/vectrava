@@ -80,7 +80,7 @@ def test_all_200s_emits_finding() -> None:
     assert finding.level == Severity.MEDIUM
     assert finding.rule_id == "rate_limit_bypass"
     assert finding.probe == "dow.rate_limit_bypass"
-    assert finding.evidence["saw_429"] is False
+    assert finding.evidence["saw_enforcement"] is False
     assert finding.evidence["status_counts"] == {"200": _BURST_SIZE}
 
 
@@ -102,6 +102,45 @@ def test_mixed_statuses_with_429_emits_no_finding() -> None:
         # One 429 mid-burst, the rest served 200. Any 429 means the target enforced.
         if calls["n"] == 5:
             return httpx.Response(429, text="slow down")
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler) as client:
+        findings = RateLimitBypassProbe().run(_ctx(client))
+
+    assert findings == []
+
+
+def test_all_503_emits_no_finding() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="service unavailable")
+
+    with _client(handler) as client:
+        findings = RateLimitBypassProbe().run(_ctx(client))
+
+    assert findings == []
+
+
+def test_all_529_emits_no_finding() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(529, text="overloaded")
+
+    with _client(handler) as client:
+        findings = RateLimitBypassProbe().run(_ctx(client))
+
+    assert findings == []
+
+
+def test_one_503_among_200s_emits_no_finding() -> None:
+    # The burst is single-threaded (post_no_retry), so a plain counter is safe. One
+    # of the twenty requests returns 503 and the rest serve 200. Under the old
+    # 429-only predicate this fired a finding (no 429 seen); now the 503 counts as
+    # enforcement and suppresses it.
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 5:
+            return httpx.Response(503, text="service unavailable")
         return httpx.Response(200, json={"ok": True})
 
     with _client(handler) as client:
@@ -152,7 +191,7 @@ def test_evidence_shape() -> None:
     status_counts = evidence["status_counts"]
     assert isinstance(status_counts, dict)
     assert status_counts
-    assert isinstance(evidence["saw_429"], bool)
+    assert isinstance(evidence["saw_enforcement"], bool)
     endpoint = evidence["endpoint"]
     assert isinstance(endpoint, str)
     assert "/v1/chat/completions" in endpoint

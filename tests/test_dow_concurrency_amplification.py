@@ -84,7 +84,7 @@ def test_all_succeed_emits_finding() -> None:
     assert finding.probe == "dow.concurrency_amplification"
     assert finding.evidence["concurrency"] == _CONCURRENCY
     assert finding.evidence["status_counts"] == {"200": _CONCURRENCY}
-    assert finding.evidence["saw_429"] is False
+    assert finding.evidence["saw_enforcement"] is False
     assert finding.evidence["served_200"] == _CONCURRENCY
 
 
@@ -110,6 +110,61 @@ def test_429_among_200s_no_finding() -> None:
             is_target = state["n"] == 3
         if is_target:
             return httpx.Response(429, text="slow down")
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler) as client:
+        findings = ConcurrencyAmplificationProbe().run(_ctx(client))
+
+    assert findings == []
+
+
+def test_all_503_no_finding() -> None:
+    # A burst of 503s is the target shedding load. The old logic suppressed this only
+    # because served_200 was 0; now it suppresses for the right reason: 503 counts as
+    # an enforcement status.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="service unavailable")
+
+    with _client(handler) as client:
+        findings = ConcurrencyAmplificationProbe().run(_ctx(client))
+
+    assert findings == []
+
+
+def test_503_among_200s_no_finding() -> None:
+    # One of the N concurrent requests returns 503, the rest return 200, so served_200
+    # is N-1. The old 429-only predicate would have fired (no 429, served_200 >= N-1);
+    # the 503 now counts as enforcement and suppresses the finding. The mock counter is
+    # locked because handlers run on multiple worker threads.
+    state = {"n": 0}
+    lock = threading.Lock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        with lock:
+            state["n"] += 1
+            is_target = state["n"] == 3
+        if is_target:
+            return httpx.Response(503, text="service unavailable")
+        return httpx.Response(200, json={"ok": True})
+
+    with _client(handler) as client:
+        findings = ConcurrencyAmplificationProbe().run(_ctx(client))
+
+    assert findings == []
+
+
+def test_529_among_200s_no_finding() -> None:
+    # Same discriminating shape as the 503 case but with a 529 overload response:
+    # served_200 is N-1, the old logic would have fired, the 529 now suppresses it.
+    state = {"n": 0}
+    lock = threading.Lock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        with lock:
+            state["n"] += 1
+            is_target = state["n"] == 3
+        if is_target:
+            return httpx.Response(529, text="overloaded")
         return httpx.Response(200, json={"ok": True})
 
     with _client(handler) as client:
@@ -223,7 +278,7 @@ def test_evidence_shape() -> None:
         assert set(entry.keys()) == {"index", "status", "elapsed_ms"}
     status_counts = evidence["status_counts"]
     assert isinstance(status_counts, dict)
-    assert isinstance(evidence["saw_429"], bool)
+    assert isinstance(evidence["saw_enforcement"], bool)
     assert isinstance(evidence["served_200"], int)
     endpoint = evidence["endpoint"]
     assert isinstance(endpoint, str)
