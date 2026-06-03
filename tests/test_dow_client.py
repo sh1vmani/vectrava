@@ -17,7 +17,7 @@ from vectrava.core.adapters import ChatCompletionsAdapter
 from vectrava.core.probe import ProbeError
 from vectrava.dow.client import CompletionResult, call_completion
 
-_TARGET_BASE = "https://example.test"  # call_completion appends /v1/chat/completions
+_TARGET_BASE = "https://example.test"  # _call passes endpoint_path; call_completion requires it
 _MAX_ATTEMPTS = 3  # mirrors vectrava.dow.client._RETRY_MAX_ATTEMPTS
 
 Handler = Callable[[httpx.Request], httpx.Response]
@@ -39,6 +39,7 @@ def _call(client: httpx.Client) -> CompletionResult:
         client,
         adapter=ChatCompletionsAdapter(),
         target_base=_TARGET_BASE,
+        endpoint_path=ChatCompletionsAdapter().default_endpoint_path,
         credential="test-key",
         model="gpt-4o-mini",
         prompt="hello",

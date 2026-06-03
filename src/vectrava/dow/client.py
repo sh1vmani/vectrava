@@ -49,7 +49,7 @@ def call_completion(
     *,
     adapter: VendorAdapter,
     target_base: str,
-    endpoint_path: str = "/v1/chat/completions",
+    endpoint_path: str,
     credential: str,
     model: str,
     prompt: str,
