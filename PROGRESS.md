@@ -1211,6 +1211,22 @@ Carry-forward closed:
 - Scope file revocation: addressed by short-window operation plus re-sign supersession, closing the long-standing "future feature" carry-forward. The vtra scope re-sign command reissues a signed scope with a new deadline, keeping targets and signer; reissuing to a past or near-term deadline supersedes the original, since the gate refuses on expiry. Shipped in 4368a30 (the re-sign command) and 21341b3 (CLI tests, including a supersession test that drives the gate). This docs commit ships near-term example scopes and documents the renewal and revocation path in README and CHANGELOG; the stale pending bullet is removed.
 - Probe catalog: rag exfiltration_sink added (CRITICAL), bringing the inventory to dow 6, ipi 5, rag 6 (18 total), a 6-6-6 split. CRITICAL probes now 3: ipi.exfiltration_attempt, rag.retrieval_permission_leak, rag.exfiltration_sink. Shipped in 86350d3 (probe) and 9daecb0 (tests).
 
+State at end of Day 9:
+
+- Total commits: 120
+- Tests: 524 passing
+- Probe inventory: dow 6, ipi 5, rag 6 (18 total), 6-6-6 split
+- CRITICAL probes: 3 (`ipi.exfiltration_attempt`, `rag.retrieval_permission_leak`, `rag.exfiltration_sink`)
+- Repository public; four workflows (CI, No Secrets, CodeQL, Scorecard) green
+- HEAD bc0ee81
+
+Session summary: nine commits this session (128ad1d..HEAD), absorbing the three post-Day-8 commits that had no close of their own (dd8384b, de81b9d, 128ad1d) into this Day 9 record. Two arcs closed: short-window scope revocation (re-sign command, supersession tests, docs) and the rag exfiltration_sink probe (CRITICAL, with detection-boundary tests proving it fires on the markdown-URL exfiltration construct and not on plain canary echo). Three carry-forwards closed (503/529 docs, call_completion endpoint_path default retirement, hex-token sweep retired as already-satisfied), and one design question decided against (vendor as a signed-scope authorization property: declined because vendor is a transport detail, not an authorization property, and the signed payload has no schema version field to migrate it safely). The AuthorizationGate docstring was corrected to stop claiming target enforcement the gate does not perform.
+
+Process notes for the record:
+
+- Permission-layer note (open item): the on-disk .claude/settings.local.json currently grants state-mutating commands (git add, git commit, git push, git pull, a broad uv run wildcard), so the human-gated commit boundary this session was enforced by the separate-paste discipline, not by the permission layer. An earlier attempt this session to prune the file to a read-only allow-list is not reflected in the file's current state; whether that prune wrote to a different path, was reverted, or did not persist is unresolved. Action for next session start: read .claude/settings.local.json, reconcile against intent, and prune to a read-only allow-list if the gated-commit posture is wanted at the permission layer.
+- Commit 9daecb0 carries the scope test(cli) but tests a rag probe, so test(rag) would have been correct. Cosmetic only; the hook accepts it and CI is green. Left as-is rather than rewriting a pushed public commit over a scope label.
+
 ### Not done
 
 Carry-forward items live in the most recent day-close section's "Carry-forward"
@@ -1226,3 +1242,29 @@ test coverage when the catalog or the writer set changes shape.
 
 The repository is public. Supply-chain and quality workflows run on pushes,
 pull requests, and a weekly schedule depending on the workflow.
+
+## Roadmap
+
+v1 target: an honest, documented alpha that a security engineer can run against
+an endpoint they are authorized to scan and trust the findings. The engine,
+authorization model, output formats, and probe families are built and tested
+against MockTransport. The gating work for v1 is real-target validation, not
+more features.
+
+v1 scope, in priority order:
+
+- Real-target validation. Every probe is currently proven only against
+  MockTransport. The lead item is a live scan against a local Ollama model
+  (operator-controlled, no credentials, no external network, no authorization
+  concern), confirming each probe fires against genuine model output and each
+  detector holds without false positives. This is the next session's lead.
+- False-positive triage surfaced by that validation: tune detectors against
+  real output where MockTransport behavior and live behavior diverge.
+- A second concrete vendor adapter proven against a real third protocol, to
+  show the adapter seam is not theoretical.
+- Operational polish: first-run docs, error messages, exit codes, packaging.
+
+Out of scope for v1 (deferred deliberately): broad probe-class coverage beyond
+the current 18 (for example retrieval-ranking attacks or tool-call induction,
+which need retriever ownership or adapter tool-call modeling the tool does not
+have); these are v1.1+ once the validated core is proven.
