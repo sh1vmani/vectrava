@@ -1204,6 +1204,12 @@ Documented `messages` behaviors (not bugs):
 - The pricing table carries no messages models, so a `messages` cost estimate
   uses the placeholder-rate fallback with its existing stderr warning.
 
+### Day 9 close (2026-06-03)
+
+Carry-forward closed:
+
+- 503/529 enforcement broadening (rate_limit_bypass, concurrency_amplification): 503 and 529 now join 429 as enforcement statuses in both burst probes. Shipped in 128ad1d via the shared ENFORCEMENT_STATUSES frozenset in dow/constants.py, with a coupling test (tests/test_dow_enforcement_statuses.py) proving both probes read the same set. CHANGELOG and this entry recorded in the docs commit that opens Day 9.
+
 ### Not done
 
 Carry-forward items live in the most recent day-close section's "Carry-forward"

@@ -89,6 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- 503 and 529 responses now count as enforcement in the rate_limit_bypass and concurrency_amplification probes, joining 429. This changes when those two probes report a finding.
 - Scan cost estimates now use a built-in per-model pricing table covering eleven
   common OpenAI, Claude, and Gemini models; the displayed cost reflects the model
   passed via `--model` (default `gpt-5.4-mini`). Models not in the table fall back
