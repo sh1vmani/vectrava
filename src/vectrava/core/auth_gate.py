@@ -63,14 +63,26 @@ class AuthorizationGate:
     rejected even though it verifies against its own public key.
 
     5. Signature mismatch. An attacker who edits a scope that was signed by a trusted
-    key, widening its targets or pushing out its deadline, breaks the signature over
+    key, altering the signed targets field or pushing out its deadline, breaks the
+    signature over
     the canonical payload. The gate re-verifies the signature against the trusted
     public key, so any change made after signing is caught.
 
     6. Expired. A scope signed for a past engagement stays cryptographically valid
     indefinitely, so a leaked or reused old scope could authorize a scan long after
     permission lapsed. The gate refuses once the current time passes
-    authorized_until, bounding authorization in time as well as in target set.
+    authorized_until, bounding authorization in time. The gate does not match
+    the scan's runtime target against the scope; that is the caller's
+    responsibility (see the boundary note below).
+
+    Scope of this gate:
+
+    check() validates the scope file's signature, signer trust, and authorization
+    window, then returns the parsed ScopeFile. It does not take a runtime target or
+    vendor and performs no target matching. Authorizing a specific scan target
+    against scope_file.targets is the caller's responsibility; the CLI runner
+    _run_scan does this immediately after check() returns. A new caller invoking
+    check() directly must perform its own target check against the returned scope.
     """
 
     def __init__(self, scope_path: Path) -> None:
