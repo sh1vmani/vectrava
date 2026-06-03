@@ -853,6 +853,77 @@ def scope_sign(
     typer.echo(f"signed scope written to {out}")
 
 
+@scope_app.command("re-sign")
+def scope_resign(
+    scope_path: Annotated[Path, typer.Argument(help="Signed scope file to reissue.")],
+    key_path: Annotated[
+        Path,
+        typer.Option("--key", help="Path to the Ed25519 private key file."),
+    ],
+    until: Annotated[
+        str,
+        typer.Option(
+            "--until",
+            help="New authorized_until deadline (ISO 8601, e.g. 2026-06-10T00:00:00Z).",
+        ),
+    ],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", help="Write reissued scope here (default: overwrite input)."),
+    ] = None,
+) -> None:
+    """Reissue a signed scope with a new deadline, keeping its targets and signer.
+
+    Verifies the input scope's existing signature before reissuing, so only an
+    already-trusted scope can be reissued. Set --until to a past or near-term
+    time to supersede a long-windowed scope: the gate's expiry check then
+    refuses the original. This is the revocation path for short-window operation.
+    """
+    import json as _json
+
+    from cryptography.exceptions import InvalidSignature
+
+    from vectrava.config.scope import ScopeFile as _ScopeFile
+
+    priv_b64 = key_path.read_text(encoding="utf-8").strip()
+    raw = _json.loads(scope_path.read_text(encoding="utf-8"))
+    scope = _ScopeFile.model_validate(raw)
+
+    # Re-sign only an already-trusted scope: verify the existing signature first.
+    try:
+        verify_scope(scope)
+    except (ValueError, InvalidSignature) as exc:
+        typer.secho(
+            f"refusing to reissue: input scope failed verification: {exc}",
+            err=True,
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1) from exc
+
+    try:
+        new_until = datetime.fromisoformat(until)
+    except ValueError as exc:
+        typer.secho(f"invalid --until value {until!r}: {exc}", err=True, fg=typer.colors.RED)
+        raise typer.Exit(code=1) from exc
+
+    reissued = _ScopeFile(
+        targets=scope.targets,
+        authorized_until=new_until,
+        signed_by=scope.signed_by,
+    )
+    signed = sign_scope_file(reissued, priv_b64)
+    data = signed.model_dump(mode="json")
+    out = output or scope_path
+    out.write_text(_json.dumps(data, indent=2), encoding="utf-8")
+    typer.echo(f"reissued scope written to {out}")
+    deadline = new_until if new_until.tzinfo is not None else new_until.replace(tzinfo=UTC)
+    if deadline <= datetime.now(UTC):
+        typer.echo(
+            "note: new deadline is already elapsed; this supersedes the scope "
+            "rather than extending it"
+        )
+
+
 @scope_app.command("verify")
 def scope_verify(
     scope_path: Annotated[Path, typer.Argument(help="Scope file to verify.")],
