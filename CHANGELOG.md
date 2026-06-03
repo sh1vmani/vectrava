@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `authorized_until` deadline.
 - `vtra scope` command group: `new-key` (generate an Ed25519 keypair), `sign`
   (sign a scope file), and `verify` (verify a signed scope file).
+- `vtra scope re-sign` reissues a signed scope with a new deadline, keeping its targets and signer, for short-window renewal and for revocation by supersession.
 - BYOK credential handling. The target API key is read from an environment
   variable named at scan time by `--api-key-env`; credentials are never bundled
   with the tool or written to config.

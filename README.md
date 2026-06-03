@@ -218,6 +218,15 @@ key whose public half is listed in `VECTRAVA_TRUSTED_KEYS`. Scans against
 unsigned, expired, or untrusted-key-signed scopes are refused before any network
 call is made.
 
+Authorization is bounded in time by the deadline, so prefer short windows
+(hours or days) over long ones. To extend an engagement, reissue the scope
+with a later deadline using `vtra scope re-sign <scope> --key <key> --until
+<deadline>`, which keeps the targets and signer and re-signs with a fresh
+deadline. To revoke a scope before its deadline, reissue it with a past or
+near-term `--until`: the gate refuses the original on expiry. Revocation
+rides the deadline check rather than a separate list, so it cannot be
+defeated by deleting a file.
+
 ## Audit log
 
 For regulated environments, every scan invocation can be recorded to a local

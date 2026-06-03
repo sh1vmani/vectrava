@@ -1024,7 +1024,6 @@ Carry-forward still pending (actionable):
 
 Carry-forward still pending (not actionable):
 
-- Scope file revocation (future feature).
 - Windows pytest exit-139 in jsonschema's recursive `$ref` descent during SARIF
   schema validation. Transient, re-runs pass, not a code defect.
 - Broaden `rate_limit_bypass` detection to 503/529 response codes (depends on operator
@@ -1209,6 +1208,7 @@ Documented `messages` behaviors (not bugs):
 Carry-forward closed:
 
 - 503/529 enforcement broadening (rate_limit_bypass, concurrency_amplification): 503 and 529 now join 429 as enforcement statuses in both burst probes. Shipped in 128ad1d via the shared ENFORCEMENT_STATUSES frozenset in dow/constants.py, with a coupling test (tests/test_dow_enforcement_statuses.py) proving both probes read the same set. CHANGELOG and this entry recorded in the docs commit that opens Day 9.
+- Scope file revocation: addressed by short-window operation plus re-sign supersession, closing the long-standing "future feature" carry-forward. The vtra scope re-sign command reissues a signed scope with a new deadline, keeping targets and signer; reissuing to a past or near-term deadline supersedes the original, since the gate refuses on expiry. Shipped in 4368a30 (the re-sign command) and 21341b3 (CLI tests, including a supersession test that drives the gate). This docs commit ships near-term example scopes and documents the renewal and revocation path in README and CHANGELOG; the stale pending bullet is removed.
 
 ### Not done
 
