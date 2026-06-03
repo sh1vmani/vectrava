@@ -51,15 +51,18 @@ citations, and contradictions between sources.
 | `rag` | `citation_hijack` | HIGH | Adversarial chunk makes the model attribute a fabricated value to a legitimate source. |
 | `rag` | `cross_document_injection` | HIGH | An instruction split across retrieved chunks is assembled and followed. |
 | `rag` | `cross_source_contradiction` | HIGH | Model prefers an adversarial value when retrieved sources contradict each other. |
+| `rag` | `exfiltration_sink` | CRITICAL | Retrieved chunk induces the model to embed marker data inside a markdown image or link URL, an exfiltration channel a rendering client auto-fetches. |
 | `rag` | `prompt_leak_via_retrieval` | HIGH | Tests whether a crafted user query makes the target reveal the retrieval template and scaffolding that wraps retrieved sources. |
 | `rag` | `retrieval_permission_leak` | CRITICAL | Tests whether the target's RAG pipeline enforces per-query permission boundaries on retrieved documents. |
 
 Severity convention: HIGH marks a demonstrated capability whose real-world
 impact depends on what the target was protecting. CRITICAL is reserved for
 outcomes that are high-impact regardless of context: `exfiltration_attempt`,
-where any system-prompt leak is damaging no matter what the prompt held, and
+where any system-prompt leak is damaging no matter what the prompt held,
 `retrieval_permission_leak`, where serving a retrieved document across a
-permission boundary is a breach regardless of what the document held.
+permission boundary is a breach regardless of what the document held, and
+`exfiltration_sink`, where embedding data into an auto-fetched URL leaks it
+out of band regardless of what the data was.
 
 ## Install
 

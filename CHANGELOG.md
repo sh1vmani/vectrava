@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chat-completions protocol, so existing scans are unchanged on the wire. The
   selected adapter is built once per scan and used by every probe, replacing the
   per-probe hardcoded adapter.
+- `rag.exfiltration_sink` (CRITICAL): detects whether a retrieved chunk can
+  induce the target to embed a planted canary inside a markdown image or link
+  URL, an exfiltration construct a rendering client auto-fetches. Fires only on
+  the URL construct, not plain canary echo.
 - `rag.retrieval_permission_leak` probe (CRITICAL severity) tests whether the
   target's RAG pipeline enforces per-query permission boundaries on retrieved
   documents. Three attack framings (direct request, indirect reference, filter
