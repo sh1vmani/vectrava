@@ -91,6 +91,7 @@ class RateLimitBypassProbe(Probe):
             max_tokens=PROBE_MAX_TOKENS,
             credential=credential,
             endpoint_path=endpoint_path,
+            temperature=ctx.temperature,
         )
 
         # The burst deliberately ignores ctx.options["max_rps"]: its purpose is to

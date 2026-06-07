@@ -58,6 +58,37 @@ def test_build_request_url_body_headers() -> None:
     assert headers["Content-Type"] == "application/json"
 
 
+def test_build_request_inserts_temperature_when_set() -> None:
+    _, body, _ = ChatCompletionsAdapter().build_request(
+        target_base="https://api.example.test",
+        model="gpt-5.4-nano",
+        messages=[{"role": "user", "content": "ping"}],
+        max_tokens=16,
+        credential="secret-value",
+        temperature=0.0,
+    )
+    # 0.0 is falsy; a naive "if temperature" would drop it. The adapter uses
+    # "is not None", so the key must be present with value 0.0.
+    assert body["temperature"] == 0.0
+    assert body == {
+        "model": "gpt-5.4-nano",
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 16,
+        "temperature": 0.0,
+    }
+
+
+def test_build_request_omits_temperature_when_none() -> None:
+    _, body, _ = ChatCompletionsAdapter().build_request(
+        target_base="https://api.example.test",
+        model="gpt-5.4-nano",
+        messages=[{"role": "user", "content": "ping"}],
+        max_tokens=16,
+        credential="secret-value",
+    )
+    assert "temperature" not in body
+
+
 def test_build_request_strips_trailing_slash() -> None:
     url, _, _ = ChatCompletionsAdapter().build_request(
         target_base="https://api.example.test/",
@@ -188,6 +219,37 @@ def test_messages_build_request_no_system_omits_field() -> None:
         "max_tokens": 8,
     }
     assert list(body) == ["model", "messages", "max_tokens"]
+
+
+def test_messages_build_request_inserts_temperature_when_set() -> None:
+    _, body, _ = MessagesAdapter().build_request(
+        target_base="https://x",
+        model="m",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=8,
+        credential="c",
+        temperature=0.0,
+    )
+    # 0.0 is falsy; a naive "if temperature" would drop it. The adapter uses
+    # "is not None", so the key must be present with value 0.0.
+    assert body["temperature"] == 0.0
+    assert body == {
+        "model": "m",
+        "messages": [{"role": "user", "content": "hi"}],
+        "max_tokens": 8,
+        "temperature": 0.0,
+    }
+
+
+def test_messages_build_request_omits_temperature_when_none() -> None:
+    _, body, _ = MessagesAdapter().build_request(
+        target_base="https://x",
+        model="m",
+        messages=[{"role": "user", "content": "hi"}],
+        max_tokens=8,
+        credential="c",
+    )
+    assert "temperature" not in body
 
 
 def test_messages_build_request_url_default_and_override() -> None:

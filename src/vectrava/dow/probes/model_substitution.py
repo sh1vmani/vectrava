@@ -77,6 +77,7 @@ class ModelSubstitutionProbe(Probe):
             prompt=PROBE_PROMPT,
             max_tokens=PROBE_MAX_TOKENS,
             min_delay_s=min_delay_s,
+            temperature=ctx.temperature,
         )
         reported = result.model
         matched = reported is not None and reported == model

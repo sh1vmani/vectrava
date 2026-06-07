@@ -72,6 +72,8 @@ class ProbeContext:
         logger: Bound structlog logger for progress and diagnostics.
         adapter: Vendor adapter the probe builds requests (and dow parses) through.
         options: Reserved for future per-probe tuning supplied by the operator.
+        temperature: Sampling temperature forwarded to the adapter request body,
+            or None to send no temperature field and inherit the target default.
     """
 
     target: str
@@ -82,6 +84,7 @@ class ProbeContext:
     logger: structlog.BoundLogger
     adapter: VendorAdapter
     options: Mapping[str, JsonValue]
+    temperature: float | None = None
 
 
 class Probe(ABC):

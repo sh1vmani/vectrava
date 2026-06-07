@@ -216,6 +216,7 @@ def _run_scan(
     yes: bool,
     output: Path | None,
     output_format: str,
+    temperature: float,
     options: Mapping[str, JsonValue],
     audit_log: Path | None,
 ) -> None:
@@ -398,6 +399,7 @@ def _run_scan(
                     logger=logger.bind(probe=probe.name),
                     adapter=adapter,
                     options=probe_options,
+                    temperature=temperature,
                 )
                 try:
                     findings.extend(probe.run(ctx))
@@ -526,6 +528,17 @@ def scan_dow(
             ),
         ),
     ] = 10.0,
+    temperature: Annotated[
+        float,
+        typer.Option(
+            "--temperature",
+            help=(
+                "Sampling temperature sent to the target (default 0.0 for "
+                "deterministic detection). Higher values make injection-probe "
+                "results nondeterministic across runs."
+            ),
+        ),
+    ] = 0.0,
     audit_log: Annotated[
         Path | None,
         typer.Option(
@@ -560,6 +573,7 @@ def scan_dow(
         yes=yes,
         output=output,
         output_format=output_format,
+        temperature=temperature,
         options=options,
         audit_log=resolved_audit,
     )
@@ -646,6 +660,17 @@ def scan_ipi(
             ),
         ),
     ] = 10.0,
+    temperature: Annotated[
+        float,
+        typer.Option(
+            "--temperature",
+            help=(
+                "Sampling temperature sent to the target (default 0.0 for "
+                "deterministic detection). Higher values make injection-probe "
+                "results nondeterministic across runs."
+            ),
+        ),
+    ] = 0.0,
     audit_log: Annotated[
         Path | None,
         typer.Option(
@@ -679,6 +704,7 @@ def scan_ipi(
         yes=yes,
         output=output,
         output_format=output_format,
+        temperature=temperature,
         options=options,
         audit_log=resolved_audit,
     )
@@ -766,6 +792,17 @@ def scan_rag(
             ),
         ),
     ] = 10.0,
+    temperature: Annotated[
+        float,
+        typer.Option(
+            "--temperature",
+            help=(
+                "Sampling temperature sent to the target (default 0.0 for "
+                "deterministic detection). Higher values make injection-probe "
+                "results nondeterministic across runs."
+            ),
+        ),
+    ] = 0.0,
     audit_log: Annotated[
         Path | None,
         typer.Option(
@@ -799,6 +836,7 @@ def scan_rag(
         yes=yes,
         output=output,
         output_format=output_format,
+        temperature=temperature,
         options=options,
         audit_log=resolved_audit,
     )

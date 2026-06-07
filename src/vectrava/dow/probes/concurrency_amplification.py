@@ -97,6 +97,7 @@ class ConcurrencyAmplificationProbe(Probe):
             max_tokens=PROBE_MAX_TOKENS,
             credential=credential,
             endpoint_path=endpoint_path,
+            temperature=ctx.temperature,
         )
 
         def _send_one(index: int) -> tuple[int, int, float]:

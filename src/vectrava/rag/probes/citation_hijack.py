@@ -149,6 +149,7 @@ class CitationHijackProbe(Probe):
                 max_tokens=PROBE_MAX_TOKENS,
                 credential=credential,
                 endpoint_path=endpoint_path,
+                temperature=ctx.temperature,
             )
             response = post_with_retry(
                 ctx.http,

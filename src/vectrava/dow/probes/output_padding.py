@@ -93,6 +93,7 @@ class OutputPaddingProbe(Probe):
                 prompt=prompt,
                 max_tokens=PROBE_MAX_TOKENS,
                 min_delay_s=min_delay_s,
+                temperature=ctx.temperature,
             )
             padding_ratio = round(result.usage.completion_tokens / max(expected, 1), 2)
             if padding_ratio < padding_threshold:

@@ -56,6 +56,7 @@ def call_completion(
     max_tokens: int,
     timeout_s: float = 60.0,
     min_delay_s: float = 0.0,
+    temperature: float | None = None,
 ) -> CompletionResult:
     """Send one benign prompt to the target completion endpoint.
 
@@ -78,6 +79,8 @@ def call_completion(
         timeout_s: Per-request timeout in seconds.
         min_delay_s: Minimum seconds between consecutive requests on the same
             client, forwarded to post_with_retry for rate limiting.
+        temperature: Sampling temperature forwarded to the adapter request body,
+            or None to omit the field and inherit the target default.
 
     Returns:
         A CompletionResult with token usage, finish reason, latency, status,
@@ -93,6 +96,7 @@ def call_completion(
         max_tokens=max_tokens,
         credential=credential,
         endpoint_path=endpoint_path,
+        temperature=temperature,
     )
 
     start = time.perf_counter()

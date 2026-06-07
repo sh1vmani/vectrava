@@ -68,6 +68,7 @@ class VendorAdapter(Protocol):
         max_tokens: int,
         credential: str,
         endpoint_path: str,
+        temperature: float | None = None,
     ) -> tuple[str, dict[str, object], dict[str, str]]:
         """Return (url, body, headers) for a completion request.
 
@@ -100,6 +101,7 @@ class ChatCompletionsAdapter:
         max_tokens: int,
         credential: str,
         endpoint_path: str = "/v1/chat/completions",
+        temperature: float | None = None,
     ) -> tuple[str, dict[str, object], dict[str, str]]:
         """Build the chat-completions URL, body, and headers."""
         url = build_url(target_base, endpoint_path)
@@ -108,6 +110,8 @@ class ChatCompletionsAdapter:
             "messages": messages,
             "max_tokens": max_tokens,
         }
+        if temperature is not None:
+            body["temperature"] = temperature
         headers = {
             "Authorization": f"Bearer {credential}",
             "Content-Type": "application/json",
@@ -161,6 +165,7 @@ class MessagesAdapter:
         max_tokens: int,
         credential: str,
         endpoint_path: str = "/v1/messages",
+        temperature: float | None = None,
     ) -> tuple[str, dict[str, object], dict[str, str]]:
         """Build the messages URL, body, and headers, splitting out a leading system turn."""
         url = build_url(target_base, endpoint_path)
@@ -171,6 +176,8 @@ class MessagesAdapter:
         else:
             body["messages"] = messages
         body["max_tokens"] = max_tokens
+        if temperature is not None:
+            body["temperature"] = temperature
         headers = {
             "X-Api-Key": credential,
             "anthropic-version": "2023-06-01",

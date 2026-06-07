@@ -151,6 +151,7 @@ class MultiTurnPersistenceProbe(Probe):
                     label=label,
                     turn_index=turn_index,
                     min_delay_s=min_delay_s,
+                    temperature=ctx.temperature,
                 )
 
                 # Response index 1 is the turn-1 acknowledgement and is excluded;

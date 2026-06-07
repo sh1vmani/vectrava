@@ -99,6 +99,7 @@ class TokenAmplificationProbe(Probe):
                 prompt=prompt,
                 max_tokens=PROBE_MAX_TOKENS,
                 min_delay_s=min_delay_s,
+                temperature=ctx.temperature,
             )
             ratio = result.usage.completion_tokens / max(result.usage.prompt_tokens, 1)
             if ratio < threshold:

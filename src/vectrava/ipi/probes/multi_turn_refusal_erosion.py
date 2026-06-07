@@ -180,6 +180,7 @@ class MultiTurnRefusalErosionProbe(Probe):
                     label=label,
                     turn_index=turn_index,
                     min_delay_s=min_delay_s,
+                    temperature=ctx.temperature,
                 )
 
                 # Only the final turn is judged: erosion is a leak on the framed ask,
