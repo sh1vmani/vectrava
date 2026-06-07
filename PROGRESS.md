@@ -1241,8 +1241,8 @@ Methodology finding (the headline): injection-class probes inherit the target sa
 
 Findings logged for follow-up (priority order):
 
-1. Injection probes are sampling-dependent; no temperature is sent. Fix path: send a fixed low temperature for deterministic detection, plus an optional repeat-N mode to bound false-negative rate on targets left at default sampling. Touches the shared request-building path across all probes.
-2. Clean runs persist no evidence, so a no-fire is unauditable after the fact. A no-fire is a security claim that cannot currently be checked. Fix path: persist the model response on clean runs. Linked to finding 1: persisting the response makes a no-fire both deterministic and reviewable.
+1. Injection probes are sampling-dependent; no temperature is sent. Fix path: send a fixed low temperature for deterministic detection, plus an optional repeat-N mode to bound false-negative rate on targets left at default sampling. Touches the shared request-building path across all probes. Shipped in 8de2a1c (deterministic temperature default).
+2. Clean runs persist no evidence, so a no-fire is unauditable after the fact. A no-fire is a security claim that cannot currently be checked. Fix path: persist the model response on clean runs. Linked to finding 1: persisting the response makes a no-fire both deterministic and reviewable. Shipped: response capture via --capture-responses (this commit).
 3. concurrency_amplification and rate_limit_bypass report saw_enforcement false, which conflates "no rate limit exists" with "a rate limit was bypassed." Those are different security claims. Fix path: distinguish the two in evidence and reconsider severity for the no-limit case.
 4. The HTML report banner keys on execution success, not findings, so a report containing a critical finding shows a green completed-successfully banner. Fix path: make the banner findings-aware.
 5. vtra scope new-key writes the private key world-readable (mode 644), and a chmod 600 is a no-op on the Windows filesystem. Fix path: platform-aware permission handling or a documented warning to protect the key directory.

@@ -14,11 +14,12 @@ here when that work is scheduled.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, ClassVar
 
 from vectrava.core.result import Finding, Severity
+from vectrava.output.response_capture import ResponseCapture
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -74,6 +75,9 @@ class ProbeContext:
         options: Reserved for future per-probe tuning supplied by the operator.
         temperature: Sampling temperature forwarded to the adapter request body,
             or None to send no temperature field and inherit the target default.
+        response_capture: Sink that records each probe response for later review.
+            Defaults to a disabled no-op recorder, so capture is off unless the
+            CLI supplies a path.
     """
 
     target: str
@@ -85,6 +89,7 @@ class ProbeContext:
     adapter: VendorAdapter
     options: Mapping[str, JsonValue]
     temperature: float | None = None
+    response_capture: ResponseCapture = field(default_factory=lambda: ResponseCapture(None))
 
 
 class Probe(ABC):

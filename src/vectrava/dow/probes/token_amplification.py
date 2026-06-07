@@ -101,6 +101,9 @@ class TokenAmplificationProbe(Probe):
                 min_delay_s=min_delay_s,
                 temperature=ctx.temperature,
             )
+            ctx.response_capture.record(
+                probe=self.name, index=None, label=category, content=result.content
+            )
             ratio = result.usage.completion_tokens / max(result.usage.prompt_tokens, 1)
             if ratio < threshold:
                 continue

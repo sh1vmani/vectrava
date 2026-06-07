@@ -166,6 +166,9 @@ class MultiTurnBuriedInstructionProbe(Probe):
                     min_delay_s=min_delay_s,
                     temperature=ctx.temperature,
                 )
+                ctx.response_capture.record(
+                    probe=self.name, index=turn_index, label=label, content=content
+                )
 
                 # Only the final turn is judged: a leak is the buried directive
                 # firing when the trigger turn springs it, not an early mention.

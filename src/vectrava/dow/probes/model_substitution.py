@@ -79,6 +79,7 @@ class ModelSubstitutionProbe(Probe):
             min_delay_s=min_delay_s,
             temperature=ctx.temperature,
         )
+        ctx.response_capture.record(probe=self.name, index=None, content=result.content)
         reported = result.model
         matched = reported is not None and reported == model
         if matched:

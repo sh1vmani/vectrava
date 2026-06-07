@@ -95,6 +95,9 @@ class OutputPaddingProbe(Probe):
                 min_delay_s=min_delay_s,
                 temperature=ctx.temperature,
             )
+            ctx.response_capture.record(
+                probe=self.name, index=None, label=category, content=result.content
+            )
             padding_ratio = round(result.usage.completion_tokens / max(expected, 1), 2)
             if padding_ratio < padding_threshold:
                 continue

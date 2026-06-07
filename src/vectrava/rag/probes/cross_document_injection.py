@@ -158,6 +158,7 @@ class CrossDocumentInjectionProbe(Probe):
                 )
 
             content = content_or_raise(ctx.adapter.parse_response(response), label, self.name)
+            ctx.response_capture.record(probe=self.name, index=None, label=label, content=content)
 
             if canary in content:
                 evidence: dict[str, JsonValue] = {

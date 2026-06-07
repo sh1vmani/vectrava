@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A `--capture-responses PATH` option on the scan commands that writes every
+  probe model response to a JSONL artifact, fire or no-fire, so a clean run is
+  auditable. Off by default.
 - `messages` is now a selectable vendor for scans. Pass `--vendor messages` to
   any `scan` subcommand to target that protocol.
 - A `--vendor` flag and per-scan adapter selection. Each `scan` subcommand

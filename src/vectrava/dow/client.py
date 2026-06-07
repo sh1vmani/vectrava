@@ -42,6 +42,7 @@ class CompletionResult(BaseModel):
     latency_ms: float
     http_status: int
     model: str | None
+    content: str | None
 
 
 def call_completion(
@@ -165,4 +166,5 @@ def call_completion(
         latency_ms=latency_ms,
         http_status=status,
         model=normalized.reported_model,
+        content=normalized.content,
     )

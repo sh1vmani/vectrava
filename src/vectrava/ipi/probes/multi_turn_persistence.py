@@ -153,6 +153,9 @@ class MultiTurnPersistenceProbe(Probe):
                     min_delay_s=min_delay_s,
                     temperature=ctx.temperature,
                 )
+                ctx.response_capture.record(
+                    probe=self.name, index=turn_index, label=label, content=content
+                )
 
                 # Response index 1 is the turn-1 acknowledgement and is excluded;
                 # a leak counts only when the directive survived past that turn.

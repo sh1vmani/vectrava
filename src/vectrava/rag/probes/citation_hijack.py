@@ -167,6 +167,7 @@ class CitationHijackProbe(Probe):
                 )
 
             content = content_or_raise(ctx.adapter.parse_response(response), label, self.name)
+            ctx.response_capture.record(probe=self.name, index=None, label=label, content=content)
 
             # Two-part detection: the fabricated value (canary) AND a citation of
             # the legitimate source by name must both appear. The canary alone is

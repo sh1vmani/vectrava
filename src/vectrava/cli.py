@@ -45,6 +45,7 @@ from vectrava.core.signing import (
 )
 from vectrava.output.html import write_html
 from vectrava.output.json_writer import write_json
+from vectrava.output.response_capture import ResponseCapture
 from vectrava.output.sarif import write_sarif
 
 if TYPE_CHECKING:
@@ -217,6 +218,7 @@ def _run_scan(
     output: Path | None,
     output_format: str,
     temperature: float,
+    capture_path: Path | None,
     options: Mapping[str, JsonValue],
     audit_log: Path | None,
 ) -> None:
@@ -237,6 +239,7 @@ def _run_scan(
         raise typer.Exit(code=0)
 
     audit = AuditWriter(audit_log)
+    response_capture = ResponseCapture(capture_path)
     try:
         audit.preflight()
     except AuditError as exc:
@@ -400,6 +403,7 @@ def _run_scan(
                     adapter=adapter,
                     options=probe_options,
                     temperature=temperature,
+                    response_capture=response_capture,
                 )
                 try:
                     findings.extend(probe.run(ctx))
@@ -435,6 +439,7 @@ def _run_scan(
         audit.set_outcome("internal_error", 1)
         raise
     finally:
+        response_capture.close()
         audit.flush()
 
 
@@ -549,6 +554,16 @@ def scan_dow(
             ),
         ),
     ] = None,
+    capture_responses: Annotated[
+        Path | None,
+        typer.Option(
+            "--capture-responses",
+            help=(
+                "Write every probe model response to this JSONL file, fire or "
+                "no-fire, so a clean run is auditable. Off by default."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run Denial-of-Wallet (dow) probes against an authorized target."""
     options: dict[str, JsonValue] = {
@@ -574,6 +589,7 @@ def scan_dow(
         output=output,
         output_format=output_format,
         temperature=temperature,
+        capture_path=capture_responses,
         options=options,
         audit_log=resolved_audit,
     )
@@ -681,6 +697,16 @@ def scan_ipi(
             ),
         ),
     ] = None,
+    capture_responses: Annotated[
+        Path | None,
+        typer.Option(
+            "--capture-responses",
+            help=(
+                "Write every probe model response to this JSONL file, fire or "
+                "no-fire, so a clean run is auditable. Off by default."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run Indirect Prompt Injection probes against TARGET."""
     options: dict[str, JsonValue] = {
@@ -705,6 +731,7 @@ def scan_ipi(
         output=output,
         output_format=output_format,
         temperature=temperature,
+        capture_path=capture_responses,
         options=options,
         audit_log=resolved_audit,
     )
@@ -813,6 +840,16 @@ def scan_rag(
             ),
         ),
     ] = None,
+    capture_responses: Annotated[
+        Path | None,
+        typer.Option(
+            "--capture-responses",
+            help=(
+                "Write every probe model response to this JSONL file, fire or "
+                "no-fire, so a clean run is auditable. Off by default."
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Run RAG pipeline boundary probes against TARGET."""
     options: dict[str, JsonValue] = {
@@ -837,6 +874,7 @@ def scan_rag(
         output=output,
         output_format=output_format,
         temperature=temperature,
+        capture_path=capture_responses,
         options=options,
         audit_log=resolved_audit,
     )

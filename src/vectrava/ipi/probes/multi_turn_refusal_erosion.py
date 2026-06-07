@@ -182,6 +182,9 @@ class MultiTurnRefusalErosionProbe(Probe):
                     min_delay_s=min_delay_s,
                     temperature=ctx.temperature,
                 )
+                ctx.response_capture.record(
+                    probe=self.name, index=turn_index, label=label, content=content
+                )
 
                 # Only the final turn is judged: erosion is a leak on the framed ask,
                 # not a codeword mention while the frame is still being built.

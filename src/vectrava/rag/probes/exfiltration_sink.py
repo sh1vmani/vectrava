@@ -184,6 +184,7 @@ class ExfiltrationSinkProbe(Probe):
                 )
 
             content = content_or_raise(ctx.adapter.parse_response(response), label, self.name)
+            ctx.response_capture.record(probe=self.name, index=None, label=label, content=content)
 
             matched_url = _canary_in_exfil_construct(content, canary)
             if matched_url is not None:
