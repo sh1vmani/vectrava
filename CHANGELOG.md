@@ -133,6 +133,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- vtra scope new-key now warns on Windows that file permissions were not
+  restricted. The command already chmods the private key to 0o600, but on
+  Windows that call toggles only the read-only bit and does not enforce POSIX
+  mode, leaving the key readable by other principals with no operator signal.
+  The warning tells the operator to protect the key directory.
 - The rate_limit_bypass and concurrency_amplification probes now report
   enforcement_observed in evidence and state that no limiting was seen at the
   tested burst volume, instead of the old saw_enforcement key and the "absent or

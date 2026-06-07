@@ -896,6 +896,13 @@ def scope_new_key(
     # Windows does not support chmod; best effort.
     with contextlib.suppress(NotImplementedError):
         priv_path.chmod(0o600)
+    if sys.platform == "win32":
+        typer.echo(
+            "warning: file permissions were not restricted on this platform; "
+            "protect the key directory so the private key is not readable by "
+            "other users.",
+            err=True,
+        )
     pub_path.write_text(pub_b64, encoding="utf-8")
     typer.echo(f"private key: {priv_path}")
     typer.echo(f"public key:  {pub_path}")
