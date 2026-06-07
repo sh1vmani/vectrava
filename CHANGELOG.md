@@ -133,6 +133,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The HTML report banner now reflects findings: a report with findings shows a
+  severity-colored "completed with findings" banner instead of the green
+  "completed successfully" banner, which previously appeared even when critical
+  findings were present. A clean run still shows green.
 - SARIF writer now emits a trailing newline on the written file, matching the
   convention other tools expect when concatenating or diffing SARIF output.
 

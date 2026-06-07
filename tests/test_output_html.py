@@ -60,8 +60,28 @@ def test_empty_findings_success_renders_no_findings() -> None:
     report = _report([])
     assert "No findings reported." in report
     assert "banner-success" in report
-    assert "Scan completed successfully" in report
+    assert "Scan completed, no findings" in report
     assert '<table class="findings"' not in report
+
+
+def test_findings_banner_summarizes_by_severity_highest_first() -> None:
+    report = _report(
+        [
+            _finding(level=Severity.CRITICAL, rule_id="ra", probe="rag.ra"),
+            _finding(level=Severity.CRITICAL, rule_id="rb", probe="rag.rb"),
+            _finding(level=Severity.MEDIUM, rule_id="dc", probe="dow.dc"),
+        ],
+        execution_successful=True,
+        exit_code=1,
+    )
+    # Full banner: text prefix, counts highest first, only nonzero levels (no
+    # high/low/informational), and the severity-coarse class from map_level of the
+    # highest present severity. CRITICAL maps to the error bucket.
+    assert (
+        '<div class="banner banner-finding-error">'
+        "Scan completed with findings: 2 critical, 1 medium</div>"
+    ) in report
+    assert '<div class="banner banner-success">' not in report
 
 
 def test_single_finding_renders_all_fields() -> None:

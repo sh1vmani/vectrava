@@ -289,7 +289,7 @@ def test_clean_scan_emits_zero_finding_html(
     assert out.exists()
     text = out.read_text(encoding="utf-8")
     assert text.startswith("<!DOCTYPE html>")
-    assert "Scan completed successfully" in text
+    assert "Scan completed, no findings" in text
     assert "No findings reported." in text
 
 
@@ -316,7 +316,9 @@ def test_findings_scan_emits_results_html(
     assert out.exists()
     text = out.read_text(encoding="utf-8")
     assert text.startswith("<!DOCTYPE html>")
-    assert "Scan completed successfully" in text
+    assert "Scan completed with findings" in text
+    assert "banner-finding-" in text
+    assert '<div class="banner banner-success">' not in text
     assert '<table class="findings"' in text
     assert "token_amplification" in text
 

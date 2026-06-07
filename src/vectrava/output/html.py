@@ -8,9 +8,11 @@ or target data passes through _h before it reaches the output.
 from __future__ import annotations
 
 import html
+from collections import Counter
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from vectrava.core.result import Severity
 from vectrava.output.sarif import map_level
 
 if TYPE_CHECKING:
@@ -38,6 +40,9 @@ table.meta td { padding: 0.15rem 0; font-family: ui-monospace, Consolas, monospa
   font-weight: 600; }
 .banner-success { background: #e6f4ea; color: #1e6b34; border: 1px solid #b7dfc4; }
 .banner-failure { background: #fce8e6; color: #a61b1b; border: 1px solid #f3b7b2; }
+.banner-finding-error { background: #fce8e6; color: #a61b1b; border: 1px solid #f3b7b2; }
+.banner-finding-warning { background: #fef7e0; color: #7a5e00; border: 1px solid #f0e3a8; }
+.banner-finding-note { background: #e8f0fe; color: #1a3a6b; border: 1px solid #c2d5f5; }
 table.findings { border-collapse: collapse; width: 100%; }
 table.findings th, table.findings td { border: 1px solid #ddd; padding: 0.4rem 0.6rem;
   text-align: left; vertical-align: top; }
@@ -169,6 +174,33 @@ def _render_evidence(evidence: Mapping[str, JsonValue]) -> str | None:
     )
 
 
+_SEVERITY_DISPLAY_ORDER = (
+    Severity.CRITICAL,
+    Severity.HIGH,
+    Severity.MEDIUM,
+    Severity.LOW,
+    Severity.INFORMATIONAL,
+)
+
+
+def _findings_banner(findings: Sequence[Finding]) -> str:
+    """Build the findings banner: severity-colored by the highest level present.
+
+    Counts findings by Severity and renders a summary highest first, listing only
+    levels with a nonzero count. The banner color follows the table's map_level
+    bucket of the highest severity present, so the banner and rows share one
+    palette.
+    """
+    counts = Counter(finding.level for finding in findings)
+    present = [level for level in _SEVERITY_DISPLAY_ORDER if counts[level]]
+    highest = present[0]
+    bucket = map_level(highest)
+    summary = ", ".join(f"{counts[level]} {level.value}" for level in present)
+    return (
+        f'<div class="banner banner-finding-{bucket}">Scan completed with findings: {summary}</div>'
+    )
+
+
 def build_html_report(
     findings: Sequence[Finding],
     *,
@@ -224,12 +256,14 @@ def build_html_report(
         "</table>",
     ]
 
-    if execution_successful:
-        parts.append('<div class="banner banner-success">Scan completed successfully</div>')
-    else:
+    if not execution_successful:
         parts.append(
             f'<div class="banner banner-failure">Scan failed (exit code {exit_code})</div>'
         )
+    elif findings:
+        parts.append(_findings_banner(findings))
+    else:
+        parts.append('<div class="banner banner-success">Scan completed, no findings</div>')
 
     if execution_successful and findings:
         parts.append('<table class="findings">')
