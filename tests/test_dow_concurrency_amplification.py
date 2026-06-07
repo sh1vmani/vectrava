@@ -84,7 +84,7 @@ def test_all_succeed_emits_finding() -> None:
     assert finding.probe == "dow.concurrency_amplification"
     assert finding.evidence["concurrency"] == _CONCURRENCY
     assert finding.evidence["status_counts"] == {"200": _CONCURRENCY}
-    assert finding.evidence["saw_enforcement"] is False
+    assert finding.evidence["enforcement_observed"] is False
     assert finding.evidence["served_200"] == _CONCURRENCY
 
 
@@ -278,7 +278,7 @@ def test_evidence_shape() -> None:
         assert set(entry.keys()) == {"index", "status", "elapsed_ms"}
     status_counts = evidence["status_counts"]
     assert isinstance(status_counts, dict)
-    assert isinstance(evidence["saw_enforcement"], bool)
+    assert isinstance(evidence["enforcement_observed"], bool)
     assert isinstance(evidence["served_200"], int)
     endpoint = evidence["endpoint"]
     assert isinstance(endpoint, str)

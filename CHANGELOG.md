@@ -133,6 +133,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The rate_limit_bypass and concurrency_amplification probes now report
+  enforcement_observed in evidence and state that no limiting was seen at the
+  tested burst volume, instead of the old saw_enforcement key and the "absent or
+  ineffective" message that implied the probe could prove a limit was missing. A
+  fixed-size burst cannot distinguish an absent limit from one not triggered at
+  that volume, so the wording now states only what was observed.
 - The HTML report banner now reflects findings: a report with findings shows a
   severity-colored "completed with findings" banner instead of the green
   "completed successfully" banner, which previously appeared even when critical

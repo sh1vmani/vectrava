@@ -127,7 +127,7 @@ class ConcurrencyAmplificationProbe(Probe):
             key = str(status)
             status_counts[key] = status_counts.get(key, 0) + 1
 
-        saw_enforcement = any(
+        enforcement_observed = any(
             status_counts.get(str(status), 0) > 0 for status in ENFORCEMENT_STATUSES
         )
         served_200 = status_counts.get("200", 0)
@@ -135,7 +135,7 @@ class ConcurrencyAmplificationProbe(Probe):
         # A throttling status (429, 503, or 529) means the target enforced a concurrency
         # or rate guardrail; otherwise require N-1 served 200s before firing, tolerating
         # a single transient drop.
-        if saw_enforcement or served_200 < _CONCURRENCY - 1:
+        if enforcement_observed or served_200 < _CONCURRENCY - 1:
             return []
 
         evidence: dict[str, JsonValue] = {
@@ -145,15 +145,16 @@ class ConcurrencyAmplificationProbe(Probe):
                 [{"index": i, "status": s, "elapsed_ms": round(e, 1)} for i, s, e in results],
             ),
             "status_counts": cast("dict[str, JsonValue]", dict(status_counts)),
-            "saw_enforcement": saw_enforcement,
+            "enforcement_observed": enforcement_observed,
             "served_200": served_200,
             "endpoint": endpoint_path,
         }
         finding = self.make_finding(
             message=(
                 f"endpoint served {served_200} of {_CONCURRENCY} concurrent requests on one "
-                "credential with no throttling response (HTTP 429, 503, or 529); "
-                "concurrency-level rate-limit hardening is absent or ineffective."
+                "credential with no throttling response (HTTP 429, 503, or 529); no "
+                "concurrency limiting was observed at this level, meaning it is either not "
+                f"configured or not triggered below {_CONCURRENCY} concurrent requests."
             ),
             target=url,
             evidence=evidence,

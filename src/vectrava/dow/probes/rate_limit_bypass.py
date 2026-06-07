@@ -109,23 +109,24 @@ class RateLimitBypassProbe(Probe):
             code = str(response.status_code)
             status_counts[code] = status_counts.get(code, 0) + 1
 
-        saw_enforcement = any(
+        enforcement_observed = any(
             status_counts.get(str(status), 0) > 0 for status in ENFORCEMENT_STATUSES
         )
-        if saw_enforcement:
+        if enforcement_observed:
             return []
 
         evidence: dict[str, JsonValue] = {
             "burst_size": _BURST_SIZE,
             "status_counts": cast("dict[str, JsonValue]", dict(status_counts)),
-            "saw_enforcement": saw_enforcement,
+            "enforcement_observed": enforcement_observed,
             "endpoint": endpoint_path,
         }
         finding = self.make_finding(
             message=(
-                f"endpoint served {_BURST_SIZE} consecutive requests with no throttling "
-                "response (HTTP 429, 503, or 529); rate-limit hardening is absent or "
-                "ineffective."
+                f"endpoint served all {_BURST_SIZE} consecutive requests with no throttling "
+                "response (HTTP 429, 503, or 529); no rate limiting was observed at this "
+                "burst volume, meaning it is either not configured or not triggered below "
+                f"{_BURST_SIZE} requests."
             ),
             target=url,
             evidence=evidence,

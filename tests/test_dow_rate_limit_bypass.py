@@ -80,7 +80,7 @@ def test_all_200s_emits_finding() -> None:
     assert finding.level == Severity.MEDIUM
     assert finding.rule_id == "rate_limit_bypass"
     assert finding.probe == "dow.rate_limit_bypass"
-    assert finding.evidence["saw_enforcement"] is False
+    assert finding.evidence["enforcement_observed"] is False
     assert finding.evidence["status_counts"] == {"200": _BURST_SIZE}
 
 
@@ -191,7 +191,7 @@ def test_evidence_shape() -> None:
     status_counts = evidence["status_counts"]
     assert isinstance(status_counts, dict)
     assert status_counts
-    assert isinstance(evidence["saw_enforcement"], bool)
+    assert isinstance(evidence["enforcement_observed"], bool)
     endpoint = evidence["endpoint"]
     assert isinstance(endpoint, str)
     assert "/v1/chat/completions" in endpoint
