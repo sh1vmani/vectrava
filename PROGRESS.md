@@ -1251,6 +1251,33 @@ Findings logged for follow-up (priority order):
 
 Validation conditions: results are for a default-context CPU target. The GPU runner segfaulted on this host (every model, both endpoints, ample VRAM free) and was worked around by forcing CPU inference; this is an environment fault in the local Ollama install, not a vectrava defect. vectrava surfaced the segfault cleanly as a failed run (exit 2, well-formed report, no crash, no phantom finding), which validated its error handling.
 
+### Day 10 close (2026-06-07)
+
+Eight commits this session (399c0d9..1a362b7). Recorded the first real-target validation pass against a local Ollama model, then resolved every follow-up it surfaced.
+
+Landed:
+
+- 399c0d9 docs(repo): record the live Ollama validation pass and its seven findings
+- 8de2a1c feat(core): send a deterministic temperature on probe requests (finding 1)
+- 361e976 feat(output): capture probe responses for no-fire auditability (finding 2)
+- eb39337 fix(output): make the HTML report banner reflect findings (finding 4)
+- a582421 fix(dow): state only the observed enforcement, not a tested negative (finding 3)
+- 03ec914 fix(cli): warn that new-key permissions are not enforced on Windows (finding 5)
+- 1a362b7 docs(repo): close the last two validation findings as already-satisfied (findings 6, 7)
+
+What shipped: the live pass exercised all 18 probes and all three output writers against genuine model output on a CPU Ollama target. Every detector that should fire did, and every no-fire was explained. Seven findings logged; five resolved as code fixes with tests, two found already-satisfied by the README quickstart. The headline finding was injection-probe sampling nondeterminism, fixed by a deterministic temperature default plus optional response capture so a no-fire is both reproducible and auditable.
+
+State at end of Day 10:
+- Total commits: 128. Tests passing: 535 (up from 524).
+- Probe inventory: 18, 6-6-6 split (dow 6 / ipi 6 / rag 6).
+- CRITICAL probes: 3 (ipi.exfiltration_attempt, rag.retrieval_permission_leak, rag.exfiltration_sink).
+- Four workflows green. HEAD 1a362b7.
+
+Roadmap progress: both v1-gating Roadmap items are now done. Real-target validation completed this session, and the false-positive-triage item is resolved (all seven findings closed).
+
+Carry-forward (still pending):
+- Permission-layer reconciliation, still open and now confirmed recurring: the on-disk .claude/settings.local.json regrew from 37 entries (after the morning prune) to 57 during this session, re-adding git add/commit/push, git pull, and a broad uv run wildcard. The harness auto-appends a grant whenever a mutating command is approved as always-allow. The gated-commit boundary was held by the separate-paste discipline, not the permission layer. The durable fix is to approve mutating commands as one-time yes, never always-allow; a re-prune alone resets a file that regrows the same way.
+
 ### Not done
 
 Carry-forward items live in the most recent day-close section's "Carry-forward"
