@@ -68,6 +68,24 @@ out of band regardless of what the data was.
 
 Requires Python `>=3.11,<3.14` and [uv](https://docs.astral.sh/uv/).
 
+If you do not have uv yet, install it with the official standalone installer.
+
+On macOS and Linux:
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+On Windows (PowerShell):
+
+```sh
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+For other methods (pipx, Homebrew, WinGet), see the [uv install guide](https://docs.astral.sh/uv/getting-started/installation/).
+
+Then clone and sync:
+
 ```sh
 git clone https://github.com/sh1vmani/vectrava
 cd vectrava
