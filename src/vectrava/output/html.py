@@ -8,6 +8,7 @@ or target data passes through _h before it reaches the output.
 from __future__ import annotations
 
 import html
+import json
 from collections import Counter
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -68,6 +69,8 @@ td.sev-note { background: #e8f0fe; }
 .evidence-table { border-collapse: collapse; font-size: 0.8rem; }
 .evidence-table td { border: 1px solid #ddd; padding: 0.1rem 0.4rem;
   font-family: ui-monospace, Consolas, monospace; }
+.evidence-table th { border: 1px solid #ddd; padding: 0.1rem 0.4rem;
+  font-family: ui-monospace, Consolas, monospace; text-align: left; background: #f3f3f3; }
 footer { margin-top: 2rem; color: #777; font-size: 0.85rem;
   border-top: 1px solid #eee; padding-top: 0.75rem; }
 </style>"""
@@ -123,29 +126,96 @@ def _render_conversation(turns: JsonValue) -> str | None:
     )
 
 
-def _render_evidence_pair(key: str, value: JsonValue) -> str:
-    """Render one evidence key/value as a pair div, dispatching on the value type."""
-    key_html = _h(key)
+def _format_float(value: float) -> str:
+    """Format a float evidence value to trimmed fixed precision.
+
+    Three decimal places, then trailing zeros and any bare trailing dot are
+    removed, so 1596.3774909999984 becomes 1596.377, 4.0 becomes 4, and 4.12 is
+    unchanged.
+    """
+    text = f"{value:.3f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
+
+
+def _scalar_html(value: JsonValue) -> str:
+    """Render a scalar evidence value, with floats passing through _format_float.
+
+    Handles bool, None, float, int, and str. Bool is checked before int because
+    bool is an int subclass. Any non-scalar falls back to its str form, so this is
+    safe to reuse for dict-cell values.
+    """
     if isinstance(value, bool):
-        value_html = _h(str(value))
-    elif value is None:
-        value_html = "(not reported)"
-    elif isinstance(value, str):
-        value_html = _h(value)
-    elif isinstance(value, (int, float)):
-        value_html = _h(str(value))
-    elif isinstance(value, dict):
+        return _h(str(value))
+    if value is None:
+        return "(not reported)"
+    if isinstance(value, float):
+        return _h(_format_float(value))
+    if isinstance(value, (int, str)):
+        return _h(str(value))
+    return _h(str(value))
+
+
+def _scalar_dict_table_html(rows: Sequence[JsonValue]) -> str | None:
+    """Render a non-empty list of uniform scalar-valued dicts as a table.
+
+    Returns table HTML when rows is a non-empty list whose entries are all dicts
+    that share one key order and carry only scalar values (str, int, float, bool,
+    None). Returns None for any other shape, so the caller can fall back to JSON.
+    """
+    if not rows:
+        return None
+    first = rows[0]
+    if not isinstance(first, dict):
+        return None
+    headers = list(first.keys())
+    if not headers:
+        return None
+    body_rows: list[str] = []
+    for entry in rows:
+        if not isinstance(entry, dict) or list(entry.keys()) != headers:
+            return None
+        cells: list[str] = []
+        for key in headers:
+            cell = entry[key]
+            if not isinstance(cell, (bool, int, float, str)) and cell is not None:
+                return None
+            cells.append(f"<td>{_scalar_html(cell)}</td>")
+        body_rows.append("<tr>" + "".join(cells) + "</tr>")
+    head = "".join(f"<th>{_h(str(k))}</th>" for k in headers)
+    return f'<table class="evidence-table"><tr>{head}</tr>{"".join(body_rows)}</table>'
+
+
+def _render_evidence_pair(key: str, value: JsonValue) -> str:
+    """Render one evidence key/value as a pair div, dispatching on the value type.
+
+    Scalars render inline, with floats passing through _format_float. A dict renders
+    as a small key/value table. A list of uniform scalar-valued dicts renders as a
+    table. Any other shape (a ragged or nested list) renders as indented JSON inside
+    the value box, so no real evidence is hidden behind a placeholder.
+    """
+    key_html = _h(key)
+    if isinstance(value, dict):
         rows = "".join(
-            f"<tr><td>{_h(str(k))}</td><td>{_h(str(v))}</td></tr>" for k, v in value.items()
+            f"<tr><td>{_h(str(k))}</td><td>{_scalar_html(v)}</td></tr>" for k, v in value.items()
         )
         return (
             f'<div class="evidence-pair"><span class="evidence-key">{key_html}</span>'
             f'<table class="evidence-table">{rows}</table></div>'
         )
+    if isinstance(value, list):
+        table = _scalar_dict_table_html(value)
+        if table is not None:
+            return (
+                f'<div class="evidence-pair"><span class="evidence-key">{key_html}</span>'
+                f"{table}</div>"
+            )
+        value_html = _h(json.dumps(value, indent=2))
+    elif isinstance(value, (bool, int, float, str)) or value is None:
+        value_html = _scalar_html(value)
     else:
-        # Lists other than "turns" (already handled) and any nested shape: no such
-        # evidence exists today, so this is a defensive fallback, not a real path.
-        value_html = "(complex value)"
+        value_html = _h(json.dumps(value, indent=2))
     return (
         f'<div class="evidence-pair"><span class="evidence-key">{key_html}</span>'
         f'<span class="evidence-value">{value_html}</span></div>'

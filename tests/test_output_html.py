@@ -390,3 +390,66 @@ def test_evidence_empty_dict_value_does_not_crash() -> None:
     report = _report([_finding_with_evidence({"status_counts": {}})])
     assert 'class="evidence-row"' in report
     assert 'class="evidence-table"' in report
+
+
+def test_evidence_float_value_is_formatted() -> None:
+    report = _report([_finding_with_evidence({"latency_ms": 1596.3774909999984})])
+    assert 'class="evidence-value">1596.377</span>' in report
+    assert "1596.3774909999984" not in report
+
+
+def test_evidence_float_trailing_zeros_trimmed() -> None:
+    report = _report([_finding_with_evidence({"threshold": 4.0})])
+    assert 'class="evidence-value">4</span>' in report
+    assert "4.000" not in report
+
+
+def test_evidence_float_preserves_significant_decimals() -> None:
+    report = _report([_finding_with_evidence({"padding_ratio": 4.12})])
+    assert 'class="evidence-value">4.12</span>' in report
+
+
+def test_evidence_dict_float_cell_is_formatted() -> None:
+    report = _report([_finding_with_evidence({"timings": {"first_ms": 12.5000001}})])
+    assert 'class="evidence-table"' in report
+    assert "<td>12.5</td>" in report
+    assert "12.5000001" not in report
+
+
+def test_evidence_list_of_uniform_dicts_renders_as_table() -> None:
+    report = _report(
+        [
+            _finding_with_evidence(
+                {
+                    "results": [
+                        {"index": 0, "status": 200, "elapsed_ms": 1596.4},
+                        {"index": 1, "status": 200, "elapsed_ms": 1601.2},
+                    ]
+                }
+            )
+        ]
+    )
+    assert "(complex value)" not in report
+    assert 'class="evidence-table"' in report
+    assert "<th>index</th>" in report
+    assert "<th>status</th>" in report
+    assert "<th>elapsed_ms</th>" in report
+    assert "<td>1596.4</td>" in report
+    assert "<td>1601.2</td>" in report
+
+
+def test_evidence_irregular_list_falls_back_without_placeholder() -> None:
+    report = _report([_finding_with_evidence({"trace": [1, [2, 3]]})])
+    assert "(complex value)" not in report
+    assert 'class="evidence-value"' in report
+
+
+def test_evidence_list_of_dicts_ragged_keys_falls_back() -> None:
+    report = _report([_finding_with_evidence({"rows": [{"a": 1}, {"b": 2}]})])
+    assert "(complex value)" not in report
+    assert 'class="evidence-value"' in report
+
+
+def test_evidence_complex_value_placeholder_is_gone() -> None:
+    report = _report([_finding_with_evidence({"results": [{"index": 0, "status": 200}]})])
+    assert "(complex value)" not in report
